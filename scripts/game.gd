@@ -25,12 +25,14 @@ var pearls := 5
 var level := 1
 var xp := 0
 var tank_tier := 0
-var equipment := {"filter": "", "heater": "", "pump": "", "light": ""}
+var equipment := {"filter": "", "heater": "", "pump": "", "light": "", "thermo": ""}
+var equip_cond := {}                 ## hueco → estado 0..100 (baja con el uso, sube con mantenimiento)
 var heater_target := 25.0
 var water_temp := ROOM_TEMP
 var substrate := "grava"
 var owned_substrates: Array = ["grava"]
-var decor: Array = []
+var decor: Array = []                ## colocadas: {id, x (0..1), layer (0 fondo, 1 medio, 2 delante), flip}
+var decor_inv := {}                  ## guardadas: id → cantidad
 var food := {"granulos": 5, "artemia": 3}
 var fish: Array = []
 var eggs: Array = []
@@ -41,7 +43,7 @@ var daily := {}
 var story_idx := 0
 var next_id := 1
 var last_sim := 0.0
-var started := false                 ## false hasta cerrar la bienvenida
+var started := false                 ## false hasta terminar o saltar el tutorial
 
 var rng := RandomNumberGenerator.new()
 var _weights := PackedFloat32Array()
@@ -80,13 +82,18 @@ func _demo(tier: int) -> void:
 	coins = 4820
 	pearls = 37
 	xp = int(xp_need(level) * 0.6)
-	equipment = {"filter": "canister", "heater": "calentador", "pump": "bomba", "light": "led_pro"}
+	equipment = {"filter": "canister", "heater": "calentador", "pump": "bomba", "light": "led_pro", "thermo": "digital"}
+	for k in equipment:
+		equip_cond[k] = 90.0
 	heater_target = 26.0
 	water_temp = 26.0
 	substrate = ["arena", "grava", "arena", "negra"][tank_tier]
-	decor = [["vallisneria", "cofre", "rocas"], ["vallisneria", "rotala", "castillo", "helecho", "rocas"],
+	var ids: Array = [["vallisneria", "cofre", "rocas"], ["vallisneria", "rotala", "castillo", "helecho", "rocas"],
 		["vallisneria", "rotala", "barco", "anubias", "cofre", "musgo", "helecho"],
 		["vallisneria", "rotala", "barco", "anubias", "coral", "helecho", "tronco", "castillo", "musgo"]][tank_tier]
+	decor = []
+	for i in ids.size():
+		decor.append(_decor_entry(ids[i], 0.12 + 0.76 * i / maxf(1.0, ids.size() - 1.0)))
 	fish = []
 	var r := RandomNumberGenerator.new()
 	r.seed = 11 + tier
@@ -139,10 +146,13 @@ func new_game() -> void:
 	level = 1
 	xp = 0
 	tank_tier = 0
-	equipment = {"filter": "", "heater": "", "pump": "", "light": ""}
+	# Kit de inicio: filtro de esponja algo sucio (el tutorial enseña a limpiarlo) y termómetro adhesivo.
+	equipment = {"filter": "esponja", "heater": "", "pump": "", "light": "", "thermo": "tira"}
+	equip_cond = {"filter": 45.0, "thermo": 100.0}
 	substrate = "grava"
 	owned_substrates = ["grava"]
-	decor = ["vallisneria", "rocas"]
+	decor = [_decor_entry("vallisneria", 0.2), _decor_entry("rocas", 0.68)]
+	decor_inv = {}
 	food = {"granulos": 5, "artemia": 3}
 	fish = []
 	eggs = []
@@ -153,7 +163,7 @@ func new_game() -> void:
 	algae = PackedByteArray()
 	algae.resize(GW * GH)
 	for i in algae.size():
-		algae[i] = int(clampf(_weights[i] * 40.0, 0.0, 255.0))
+		algae[i] = int(clampf(_weights[i] * 55.0, 0.0, 255.0))
 	for sp in ["guppy", "guppy", "neon"]:
 		_add_fish(Genetics.random_genes(sp, rng), 1.0, false)
 	last_sim = Time.get_unix_time_from_system()
@@ -166,9 +176,9 @@ func save_game() -> void:
 	_save_acc = 0.0
 	var data := {
 		"v": SAVE_VERSION, "coins": coins, "pearls": pearls, "level": level, "xp": xp,
-		"tank_tier": tank_tier, "equipment": equipment, "heater_target": heater_target,
+		"tank_tier": tank_tier, "equipment": equipment, "equip_cond": equip_cond, "heater_target": heater_target,
 		"water_temp": water_temp, "substrate": substrate, "owned_substrates": owned_substrates,
-		"decor": decor, "food": food, "fish": fish, "eggs": eggs,
+		"decor": decor, "decor_inv": decor_inv, "food": food, "fish": fish, "eggs": eggs,
 		"algae": Marshalls.raw_to_base64(algae), "stats": stats, "discovered": discovered,
 		"daily": daily, "story_idx": story_idx, "next_id": next_id, "last_sim": last_sim,
 		"started": started,
@@ -202,12 +212,21 @@ func load_game() -> bool:
 	level = int(d.level)
 	xp = int(d.xp)
 	tank_tier = int(d.tank_tier)
-	equipment = d.equipment
+	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": ""}
+	equipment.merge(d.equipment, true)
+	equip_cond = d.get("equip_cond", {})
 	heater_target = float(d.heater_target)
 	water_temp = float(d.water_temp)
 	substrate = d.substrate
 	owned_substrates = d.owned_substrates
-	decor = d.decor
+	decor = []
+	var old: Array = d.decor
+	for i in old.size():
+		# Partidas antiguas guardaban solo el id.
+		decor.append(old[i] if old[i] is Dictionary else _decor_entry(old[i], 0.12 + 0.76 * i / maxf(1.0, old.size() - 1.0)))
+	decor_inv = d.get("decor_inv", {})
+	for k in decor_inv:
+		decor_inv[k] = int(decor_inv[k])
 	food = d.food
 	for k in food:
 		food[k] = int(food[k])
@@ -281,8 +300,8 @@ func _sim(dt: float, now: float) -> void:
 	var m := dt / 60.0
 	if not _offline_floor:
 		_refresh_water()
-	var temp_target := heater_target if equipment.heater != "" else ROOM_TEMP
-	water_temp = move_toward(water_temp, temp_target, 0.6 * m)
+	water_temp = move_toward(water_temp, _temp_target(), 0.6 * m)
+	_wear(dt)
 	var w: Dictionary = _cache
 	var floor_hp := 25.0 if _offline_floor else 5.0
 	for f in fish:
@@ -314,7 +333,8 @@ func _sim(dt: float, now: float) -> void:
 
 func _grow_algae(dt: float) -> void:
 	var w: Dictionary = _cache
-	var per_min: float = (0.15 + 0.25 * w.load) * (1.0 - w.filter) * (1.0 - w.plant_clean)
+	# Lento a propósito: sin filtro, 2-3 peces tardan ~7 h en cubrir el cristal.
+	var per_min: float = (0.07 + 0.12 * w.load) * (1.0 - w.filter) * (1.0 - w.plant_clean)
 	var add := per_min * dt / 60.0 * 2.55          # bytes por celda (peso medio 1)
 	if add <= 0.0:
 		return
@@ -336,7 +356,8 @@ func _build_weights() -> void:
 			var edge := 1.0 - minf(minf(x, GW - 1 - x), 8.0) / 8.0
 			var bottom := float(y) / GH
 			var n := noise.get_noise_2d(x, y) * 0.5 + 0.5
-			_weights[y * GW + x] = clampf(0.35 + n * 1.0 + edge * 0.45 + bottom * 0.35, 0.15, 2.0)
+			# Mucha varianza: unas manchas aparecen pronto y se van extendiendo.
+			_weights[y * GW + x] = clampf(0.1 + pow(n, 2.2) * 2.6 + edge * 0.5 + bottom * 0.3, 0.08, 2.6)
 
 
 ## Recalcula los parámetros del agua (pH, O₂, suciedad...) a partir del estado.
@@ -350,8 +371,8 @@ func _refresh_water() -> void:
 	var decor_happy := 0.0
 	var ph_fx := 0.0
 	var plant_clean := 0.0
-	for id in decor:
-		var d: Dictionary = Catalog.DECOR[id]
+	for it in decor:
+		var d: Dictionary = Catalog.DECOR[it.id]
 		decor_happy += d.fx.get("happy", 0.0)
 		ph_fx += d.fx.get("ph", 0.0)
 		plant_clean += d.fx.get("clean", 0.0)
@@ -363,13 +384,13 @@ func _refresh_water() -> void:
 		decor_happy += plants * 1.0
 		plant_clean *= 1.5
 	if equipment.light != "":
-		decor_happy += Catalog.EQUIPMENT[equipment.light].happy
+		decor_happy += Catalog.EQUIPMENT[equipment.light].happy * efficiency("light")
 	var load := 0.0
 	for f in fish:
 		load += Catalog.SPECIES[f.genes.sp].load * f.genes.size * (0.4 + 0.6 * f.grow)
 	var cap: float = tank.o2 + plants * 0.6
 	if equipment.pump != "":
-		cap += Catalog.EQUIPMENT[equipment.pump].o2
+		cap += Catalog.EQUIPMENT[equipment.pump].o2 * efficiency("pump")
 	var o2 := 100.0 - maxf(0.0, load - cap) / cap * 120.0 - maxf(0.0, water_temp - 27.0) * 3.0
 	_cache = {
 		"dirt": dirt,
@@ -378,13 +399,157 @@ func _refresh_water() -> void:
 		"load": load,
 		"o2_cap": cap,
 		"decor_happy": minf(decor_happy, 30.0),
-		"filter": Catalog.EQUIPMENT[equipment.filter].eff if equipment.filter != "" else 0.0,
+		"filter": Catalog.EQUIPMENT[equipment.filter].eff * efficiency("filter") if equipment.filter != "" else 0.0,
 		"plant_clean": minf(plant_clean, 0.35),
 	}
 
 
 func water() -> Dictionary:
 	return _cache
+
+
+# ───────────────────────── Equipo y mantenimiento ─────────────────────────
+
+## 1 por encima del 60% de estado; baja hasta 0.15 cuando está muy descuidado.
+func efficiency(slot: String) -> float:
+	return clampf(float(equip_cond.get(slot, 100.0)) / 60.0, 0.15, 1.0)
+
+
+func condition(slot: String) -> float:
+	return float(equip_cond.get(slot, 100.0))
+
+
+func _temp_target() -> float:
+	if equipment.heater == "":
+		return ROOM_TEMP
+	var e: Dictionary = Catalog.EQUIPMENT[equipment.heater]
+	return lerpf(ROOM_TEMP, e.get("fixed", heater_target), efficiency("heater"))
+
+
+func _wear(dt: float) -> void:
+	for slot in equipment:
+		var id: String = equipment[slot]
+		if id == "":
+			continue
+		var rate: float = Catalog.EQUIPMENT[id].wear
+		if slot == "filter":
+			rate *= 0.5 + 0.35 * float(_cache.get("load", 1.0))
+		var before := condition(slot)
+		equip_cond[slot] = maxf(0.0, before - rate * dt / 3600.0)
+		if before >= 30.0 and equip_cond[slot] < 30.0 and not _offline_floor:
+			toast.emit("%s necesita mantenimiento" % Catalog.EQUIPMENT[id].name, "gear")
+
+
+## Equipos por debajo del 30%: para avisos en la pecera.
+func needs_maintenance() -> Array:
+	var out: Array = []
+	for slot in equipment:
+		if equipment[slot] != "" and Catalog.EQUIPMENT[equipment[slot]].wear > 0.0 and condition(slot) < 30.0:
+			out.append(slot)
+	return out
+
+
+func maintain(slot: String) -> void:
+	if equipment.get(slot, "") == "":
+		return
+	equip_cond[slot] = 100.0
+	_bump("maint", 1)
+	add_xp(5)
+	_refresh_water()
+	tank_changed.emit()
+	toast.emit("%s como nuevo" % Catalog.EQUIPMENT[equipment[slot]].name, "sparkle")
+	changed.emit()
+
+
+## Texto del termómetro: "" si no hay (o el digital no tiene pila).
+func thermometer_text() -> String:
+	match equipment.thermo:
+		"tira": return "%.0f°C" % water_temp
+		"digital": return "%.1f°C" % water_temp if condition("thermo") > 0.0 else ""
+	return ""
+
+
+# ───────────────────────── Decoración ─────────────────────────
+
+func _decor_entry(id: String, x: float) -> Dictionary:
+	return {"id": id, "x": x, "layer": 0 if Catalog.DECOR[id].kind == "plant" else 1, "flip": false}
+
+
+func decor_slots() -> int:
+	return Catalog.TANKS[tank_tier].slots
+
+
+## Coloca una pieza del inventario en el hueco libre más amplio.
+func place_decor(id: String) -> bool:
+	if int(decor_inv.get(id, 0)) <= 0:
+		return false
+	if decor.size() >= decor_slots():
+		toast.emit("No cabe más: guarda algo o amplía la pecera", "tank")
+		return false
+	var xs: Array = [0.04, 0.96]
+	for it in decor:
+		xs.append(it.x)
+	xs.sort()
+	var best := 0.5
+	var gap := -1.0
+	for i in xs.size() - 1:
+		if xs[i + 1] - xs[i] > gap:
+			gap = xs[i + 1] - xs[i]
+			best = (xs[i] + xs[i + 1]) * 0.5
+	decor_inv[id] = int(decor_inv[id]) - 1
+	if decor_inv[id] == 0:
+		decor_inv.erase(id)
+	decor.append(_decor_entry(id, best))
+	_decor_changed()
+	return true
+
+
+func store_decor(i: int) -> void:
+	if i < 0 or i >= decor.size():
+		return
+	var id: String = decor[i].id
+	decor_inv[id] = int(decor_inv.get(id, 0)) + 1
+	decor.remove_at(i)
+	_decor_changed()
+	toast.emit("%s guardado en el inventario" % Catalog.DECOR[id].name, "plant")
+
+
+func sell_decor_inv(id: String) -> void:
+	if int(decor_inv.get(id, 0)) <= 0:
+		return
+	var d: Dictionary = Catalog.DECOR[id]
+	var refund := int(d.price / 2)
+	if d.cur == "pearls":
+		pearls += refund
+	else:
+		coins += refund
+	decor_inv[id] = int(decor_inv[id]) - 1
+	if decor_inv[id] == 0:
+		decor_inv.erase(id)
+	toast.emit("Vendiste %s (+%d)" % [d.name, refund], "coin" if d.cur == "coins" else "pearl")
+	changed.emit()
+
+
+func move_decor(i: int, x: float) -> void:
+	decor[i].x = clampf(x, 0.03, 0.97)
+	_dirty = true
+
+
+func cycle_decor_layer(i: int) -> void:
+	decor[i].layer = (int(decor[i].layer) + 1) % 3
+	_decor_changed()
+
+
+func flip_decor(i: int) -> void:
+	decor[i].flip = not decor[i].flip
+	_decor_changed()
+
+
+func _decor_changed() -> void:
+	_refresh_water()
+	tank_changed.emit()
+	changed.emit()
+	_dirty = true
 
 
 # ───────────────────────── Peces ─────────────────────────
@@ -457,8 +622,8 @@ func breed(id_a: int, id_b: int) -> bool:
 	var sp: String = a.genes.sp
 	var mut := Genetics.BASE_MUTATION
 	var speed := 1.0
-	for id in decor:
-		var fx: Dictionary = Catalog.DECOR[id].fx
+	for it in decor:
+		var fx: Dictionary = Catalog.DECOR[it.id].fx
 		mut += fx.get("mutation", 0.0)
 		speed = maxf(speed, fx.get("breed", {}).get(sp, 1.0))
 	var genes := Genetics.breed(a.genes, b.genes, rng, mut)
@@ -668,38 +833,22 @@ func buy_equipment(id: String) -> void:
 	if equipment[e.slot] == id or not spend(e.price, "coins"):
 		return
 	equipment[e.slot] = id
+	equip_cond[e.slot] = 100.0
 	_refresh_water()
 	tank_changed.emit()
 	_bought("%s instalado" % e.name, "gear")
 
 
+## Compra al inventario y, si hay hueco, la coloca directamente.
 func buy_decor(id: String) -> void:
 	var d: Dictionary = Catalog.DECOR[id]
-	if decor.size() >= Catalog.TANKS[tank_tier].slots:
-		toast.emit("No queda sitio. Quita una decoración o amplía la pecera", "tank")
-		return
 	if not spend(d.price, d.cur):
 		return
-	decor.append(id)
-	_refresh_water()
-	tank_changed.emit()
-	_bought("%s colocado" % d.name, "plant")
-
-
-func remove_decor(index: int) -> void:
-	if index < 0 or index >= decor.size():
-		return
-	var d: Dictionary = Catalog.DECOR[decor[index]]
-	var refund := int(d.price / 2)
-	if d.cur == "pearls":
-		pearls += refund
+	decor_inv[id] = int(decor_inv.get(id, 0)) + 1
+	if decor.size() < decor_slots() and place_decor(id):
+		_bought("%s colocado: arrástralo en modo Decorar" % d.name, "plant")
 	else:
-		coins += refund
-	decor.remove_at(index)
-	_refresh_water()
-	tank_changed.emit()
-	toast.emit("Has quitado %s (+%d)" % [d.name, refund], "coin" if d.cur == "coins" else "pearl")
-	changed.emit()
+		_bought("%s guardado en el inventario" % d.name, "plant")
 
 
 func buy_substrate(id: String) -> void:
@@ -805,10 +954,11 @@ func story_progress() -> int:
 		"rarity": return int(stats.get("best_bred", 0))
 		"variants": return discovered.size()
 		"plant":
-			for id in decor:
-				if Catalog.DECOR[id].kind == "plant":
+			for it in decor:
+				if Catalog.DECOR[it.id].kind == "plant":
 					return 1
 			return 0
+		"maint": return int(stats.get("maint", 0))
 	return 0
 
 

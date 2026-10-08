@@ -48,7 +48,7 @@ func _init() -> void:
 	for f in game.fish:
 		check(f.hunger > 90.0, "tras 8 h tienen hambre (%.0f)" % f.hunger)
 		check(f.health >= 25.0, "nadie baja del 25%% offline (%.0f)" % f.health)
-	check(game.water().dirt > 30.0, "las algas crecen offline (%.0f%%)" % game.water().dirt)
+	check(game.water().dirt > 30.0 and game.water().dirt < 90.0, "las algas crecen poco a poco offline (%.0f%%)" % game.water().dirt)
 
 	# Limpiar y alimentar.
 	var before: float = game.water().dirt
@@ -81,7 +81,24 @@ func _init() -> void:
 	game.buy_tank(1)
 	check(game.tank_tier == 1 and game.capacity() == 10, "pecera ampliada")
 	game.buy_decor("cueva")
-	check("cueva" in game.decor, "decoración colocada")
+	check(game.decor.any(func(d): return d.id == "cueva"), "decoración colocada")
+	var n: int = game.decor.size()
+	game.store_decor(n - 1)
+	check(game.decor.size() == n - 1 and game.decor_inv.get("cueva", 0) == 1, "guardar en inventario")
+	check(game.place_decor("cueva") and game.decor_inv.is_empty(), "colocar desde inventario")
+	game.move_decor(0, 2.0)
+	check(game.decor[0].x <= 0.97, "mover se queda dentro del cristal")
+
+	# Mantenimiento: el filtro se desgasta con el tiempo y rinde menos.
+	game.equip_cond.filter = 100.0
+	game._wear(30 * 3600.0)
+	check(game.condition("filter") < 30.0, "el filtro se ensucia (%.0f%%)" % game.condition("filter"))
+	check(game.efficiency("filter") < 0.5, "filtro sucio rinde menos")
+	check(game.needs_maintenance().has("filter"), "aviso de mantenimiento")
+	game.maintain("filter")
+	check(game.condition("filter") == 100.0 and game.efficiency("filter") == 1.0, "mantenimiento lo deja nuevo")
+	game.equipment.thermo = ""
+	check(game.thermometer_text() == "", "sin termómetro no hay temperatura")
 	check(game.daily.missions.size() == 3, "3 misiones diarias")
 	game.free()
 

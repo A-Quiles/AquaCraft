@@ -94,28 +94,36 @@ const RARITY_COLORS := ["9aa7b5", "4fc27a", "3fa3ff", "b36bff", "ffb020"]
 const RARITY_MULT := [1.0, 1.8, 3.5, 7.0, 16.0]
 
 const TANKS := [
-	{"id": "nano", "name": "Nano 20 L", "cap": 5, "o2": 4.0, "slots": 3, "price": 0, "level": 1,
+	{"id": "nano", "name": "Nano 20 L", "cap": 5, "o2": 4.0, "slots": 5, "price": 0, "level": 1,
 		"desc": "Tu primera pecera. Pequeñita pero acogedora."},
-	{"id": "comunitario", "name": "Comunitario 60 L", "cap": 10, "o2": 8.0, "slots": 5, "price": 900, "level": 2,
+	{"id": "comunitario", "name": "Comunitario 60 L", "cap": 10, "o2": 8.0, "slots": 8, "price": 900, "level": 2,
 		"desc": "Espacio para una comunidad animada."},
-	{"id": "panoramico", "name": "Panorámico 200 L", "cap": 18, "o2": 14.0, "slots": 7, "price": 4000, "level": 5,
+	{"id": "panoramico", "name": "Panorámico 200 L", "cap": 18, "o2": 14.0, "slots": 11, "price": 4000, "level": 5,
 		"desc": "Cristal panorámico para paisajes de verdad."},
-	{"id": "monumental", "name": "Monumental 1000 L", "cap": 30, "o2": 24.0, "slots": 9, "price": 16000, "level": 9,
+	{"id": "monumental", "name": "Monumental 1000 L", "cap": 30, "o2": 24.0, "slots": 15, "price": 16000, "level": 9,
 		"desc": "Un muro de agua. El sueño de todo acuarista."},
 ]
 
-## slot: filter / heater / pump / light. Instalar uno sustituye al anterior del mismo hueco.
+## slot: filter / heater / pump / light / thermo. Instalar uno sustituye al anterior del mismo hueco.
+## wear: % de estado que pierde por hora (el filtro, más cuanto más carga de peces).
+## maint: acción de mantenimiento que lo deja al 100%.
 const EQUIPMENT := {
-	"esponja": {"slot": "filter", "name": "Filtro de esponja", "price": 150, "level": 1, "eff": 0.35, "desc": "Algas un 35% más lentas."},
-	"mochila": {"slot": "filter", "name": "Filtro de mochila", "price": 700, "level": 3, "eff": 0.55, "desc": "Algas un 55% más lentas."},
-	"canister": {"slot": "filter", "name": "Filtro canister", "price": 2400, "level": 6, "eff": 0.75, "desc": "Algas un 75% más lentas."},
-	"calentador": {"slot": "heater", "name": "Calentador con termostato", "price": 220, "level": 2, "desc": "Elige la temperatura del agua (18–31 °C)."},
-	"difusor": {"slot": "pump", "name": "Piedra difusora", "price": 120, "level": 1, "o2": 3.0, "desc": "+3 de oxígeno y burbujitas."},
-	"bomba": {"slot": "pump", "name": "Bomba de aire doble", "price": 600, "level": 3, "o2": 6.0, "desc": "+6 de oxígeno."},
-	"circulacion": {"slot": "pump", "name": "Bomba de circulación", "price": 2000, "level": 5, "o2": 10.0, "desc": "+10 de oxígeno."},
-	"led_pro": {"slot": "light", "name": "Pantalla LED Pro", "price": 500, "level": 3, "happy": 6.0, "desc": "Luz brillante: +felicidad y plantas más vivas."},
+	"esponja": {"slot": "filter", "name": "Filtro de esponja", "price": 150, "level": 1, "eff": 0.35, "wear": 2.5, "maint": "Escurrir la esponja", "desc": "Algas un 35% más lentas. Se ensucia rápido."},
+	"mochila": {"slot": "filter", "name": "Filtro de mochila", "price": 700, "level": 3, "eff": 0.55, "wear": 1.6, "maint": "Cambiar el cartucho", "desc": "Algas un 55% más lentas."},
+	"canister": {"slot": "filter", "name": "Filtro canister", "price": 2400, "level": 6, "eff": 0.75, "wear": 0.9, "maint": "Limpiar los cestillos", "desc": "Algas un 75% más lentas. Casi no da guerra."},
+	"calentador_fijo": {"slot": "heater", "name": "Calentador fijo", "price": 90, "level": 1, "fixed": 25.0, "wear": 0.6, "maint": "Quitar la cal", "desc": "Mantiene el agua a 25 °C."},
+	"calentador": {"slot": "heater", "name": "Calentador con termostato", "price": 220, "level": 2, "wear": 0.5, "maint": "Quitar la cal", "desc": "Elige la temperatura del agua (18–31 °C)."},
+	"difusor": {"slot": "pump", "name": "Piedra difusora", "price": 120, "level": 1, "o2": 3.0, "wear": 1.4, "maint": "Cambiar la piedra", "desc": "+3 de oxígeno y burbujitas."},
+	"bomba": {"slot": "pump", "name": "Bomba de aire doble", "price": 600, "level": 3, "o2": 6.0, "wear": 1.0, "maint": "Revisar la membrana", "desc": "+6 de oxígeno."},
+	"circulacion": {"slot": "pump", "name": "Bomba de circulación", "price": 2000, "level": 5, "o2": 10.0, "wear": 0.8, "maint": "Limpiar el rotor", "desc": "+10 de oxígeno."},
+	"led_pro": {"slot": "light", "name": "Pantalla LED Pro", "price": 500, "level": 3, "happy": 6.0, "wear": 0.7, "maint": "Limpiar la tapa", "desc": "Luz brillante: +felicidad y plantas más vivas."},
+	"led_plantada": {"slot": "light", "name": "LED plantada RGB", "price": 1400, "level": 6, "happy": 10.0, "wear": 0.6, "maint": "Limpiar la tapa", "desc": "Espectro completo: colores intensos y mucha felicidad."},
+	"tira": {"slot": "thermo", "name": "Termómetro adhesivo", "price": 30, "level": 1, "wear": 0.0, "desc": "Muestra la temperatura en grados enteros."},
+	"digital": {"slot": "thermo", "name": "Termómetro digital", "price": 180, "level": 2, "wear": 0.5, "maint": "Cambiar la pila", "desc": "Décimas de grado y alarma si tus peces pasan frío o calor."},
 }
-const EQUIPMENT_ORDER := ["esponja", "mochila", "canister", "calentador", "difusor", "bomba", "circulacion", "led_pro"]
+const EQUIPMENT_ORDER := ["esponja", "mochila", "canister", "calentador_fijo", "calentador", "difusor", "bomba", "circulacion",
+	"led_pro", "led_plantada", "tira", "digital"]
+const SLOT_NAMES := {"filter": "Filtro", "heater": "Calentador", "pump": "Aireador", "light": "Iluminación", "thermo": "Termómetro"}
 
 ## kind: plant / ornament. cur: coins / pearls. fx: happy, clean (reduce algas), ph, breed{especie: x}, mutation
 const DECOR := {
@@ -158,7 +166,7 @@ const FOOD_ORDER := ["escamas", "granulos", "artemia"]
 const STORY := [
 	{"text": "Da de comer a tus peces", "type": "feeds", "target": 1, "coins": 30, "pearls": 0, "xp": 15},
 	{"text": "Limpia las algas del cristal", "type": "cleaned", "target": 10, "coins": 40, "pearls": 0, "xp": 15},
-	{"text": "Instala un filtro", "type": "filter", "target": 1, "coins": 0, "pearls": 2, "xp": 20},
+	{"text": "Haz el mantenimiento del filtro", "type": "maint", "target": 1, "coins": 0, "pearls": 2, "xp": 20},
 	{"text": "Cría tu primer pez", "type": "bred", "target": 1, "coins": 0, "pearls": 3, "xp": 30},
 	{"text": "Decora con una planta", "type": "plant", "target": 1, "coins": 60, "pearls": 0, "xp": 20},
 	{"text": "Vende un pez", "type": "sold", "target": 1, "coins": 80, "pearls": 0, "xp": 20},
@@ -185,6 +193,7 @@ const DAILY := [
 	{"id": "earned", "text": "Gana %d monedas vendiendo", "min": 40, "max": 150, "coins": 80, "xp": 25},
 	{"id": "artemia", "text": "Da artemia %d veces", "min": 2, "max": 4, "coins": 60, "xp": 20},
 	{"id": "bought", "text": "Compra %d cosas en la tienda", "min": 1, "max": 2, "coins": 50, "xp": 15},
+	{"id": "maint", "text": "Haz %d mantenimientos del equipo", "min": 1, "max": 3, "coins": 70, "xp": 20},
 ]
 
 const NAMES := ["Burbuja", "Coral", "Perla", "Chispa", "Lola", "Rayo", "Canela", "Miel", "Tofu", "Kiwi",

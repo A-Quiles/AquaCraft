@@ -16,6 +16,8 @@ var _food_row: HBoxContainer
 var _food_buttons := {}
 var _sheet: Control
 var _modal: Modal
+var _temp_alarm := false
+var _tutorial: Control
 
 
 ## Márgenes seguros (notch / barra de gestos) en unidades del lienzo: x = arriba, y = abajo.
@@ -41,7 +43,7 @@ func _ready() -> void:
 	refresh()
 	refresh_mode()
 	if not Game.started:
-		_welcome.call_deferred()
+		start_tutorial.call_deferred()
 
 
 func _glass(radius := 26) -> StyleBoxFlat:
@@ -165,9 +167,9 @@ func _build_bottom() -> void:
 		_food_buttons[id] = b
 	v.add_child(_food_row)
 
-	var bar := UI.hbox(10)
-	for it in [["feed", "food", "Comida"], ["clean", "sponge", "Limpiar"], ["shop", "shop", "Tienda"],
-			["fish", "fish", "Peces"], ["missions", "missions", "Misiones"]]:
+	var bar := UI.hbox(8)
+	for it in [["feed", "food", "Comida"], ["clean", "sponge", "Limpiar"], ["edit", "plant", "Decorar"],
+			["shop", "shop", "Tienda"], ["fish", "fish", "Peces"], ["missions", "missions", "Misiones"]]:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -177,10 +179,10 @@ func _build_bottom() -> void:
 		col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		col.offset_top = 8
 		col.alignment = BoxContainer.ALIGNMENT_CENTER
-		var ic := VIcon.make(it[1], 56)
+		var ic := VIcon.make(it[1], 50)
 		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		col.add_child(ic)
-		var l := UI.label(it[2], 20, UI.NAVY, UI.bold)
+		var l := UI.label(it[2], 18, UI.NAVY, UI.bold)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(l)
 		b.add_child(col)
@@ -209,6 +211,7 @@ func _on_bar(k: String) -> void:
 	match k:
 		"feed": main.set_mode(main.Mode.FEED)
 		"clean": main.set_mode(main.Mode.CLEAN)
+		"edit": main.set_mode(main.Mode.EDIT)
 		"shop": open_shop(0)
 		"fish": open_fish(-1)
 		"missions": open_missions()
@@ -217,11 +220,14 @@ func _on_bar(k: String) -> void:
 func refresh_mode() -> void:
 	_style_bar(_bar.feed, main.mode == main.Mode.FEED)
 	_style_bar(_bar.clean, main.mode == main.Mode.CLEAN)
+	_style_bar(_bar.edit, main.mode == main.Mode.EDIT)
 	for k in ["shop", "fish", "missions"]:
 		_style_bar(_bar[k], false)
 	_food_row.visible = main.mode == main.Mode.FEED
 	_hint.visible = main.mode != main.Mode.NORMAL
-	_hint_label.text = "Toca el agua para echar comida" if main.mode == main.Mode.FEED else "Desliza el dedo por el cristal para quitar las algas"
+	_hint_label.text = {main.Mode.FEED: "Toca el agua para echar comida",
+		main.Mode.CLEAN: "Desliza el dedo por el cristal para quitar las algas",
+		main.Mode.EDIT: "Arrastra una pieza para moverla · tócala para más opciones"}.get(main.mode, "")
 	refresh_food()
 
 
@@ -250,7 +256,14 @@ func refresh() -> void:
 		if Game.water_temp < s.temp[0] - 0.5 or Game.water_temp > s.temp[1] + 0.5: out_t += 1
 		if w.ph < s.ph[0] - 0.2 or w.ph > s.ph[1] + 0.2: out_ph += 1
 	var n := maxi(1, Game.fish.size())
-	_chip("temp", "%.0f°C" % Game.water_temp, 0 if out_t == 0 else (1 if out_t * 2 < n else 2))
+	var t_txt := Game.thermometer_text()
+	if t_txt == "":
+		_chip("temp", "¿? °C", 1)
+	else:
+		_chip("temp", t_txt, 0 if out_t == 0 else (1 if out_t * 2 < n else 2))
+		if out_t > 0 and Game.equipment.thermo == "digital" and not _temp_alarm:
+			show_toast("Alarma del termómetro: a algunos peces no les va esta temperatura", "thermo")
+		_temp_alarm = out_t > 0
 	_chip("ph", "pH %.1f" % w.ph, 0 if out_ph == 0 else (1 if out_ph * 2 < n else 2))
 	_chip("o2", "%d%%" % roundi(w.o2), 0 if w.o2 >= 70.0 else (1 if w.o2 >= 55.0 else 2))
 	_chip("clean", "%d%%" % roundi(100.0 - w.dirt), 0 if w.dirt < 40.0 else (1 if w.dirt < 70.0 else 2))
@@ -267,10 +280,14 @@ func _chip_tip(k: String) -> void:
 	var w := Game.water()
 	match k:
 		"temp":
-			if Game.equipment.heater != "":
+			if Game.thermometer_text() == "":
+				show_toast("Sin termómetro no sabes la temperatura. Instala uno (o cámbiale la pila).", "thermo")
+			elif Game.equipment.heater == "calentador":
 				open_thermostat()
+			elif Game.equipment.heater != "":
+				show_toast("El calentador fijo mantiene el agua a 25 °C. Con termostato podrás elegirla.", "thermo")
 			else:
-				show_toast("Agua a %.0f °C, como la habitación. Un calentador te deja elegir la temperatura." % Game.water_temp, "thermo")
+				show_toast("Agua a temperatura ambiente. Un calentador la mantiene estable.", "thermo")
 		"ph":
 			show_toast("pH %.1f. Las algas lo bajan y la raíz de manglar lo acidifica. Cada especie tiene su rango." % w.ph, "ph")
 		"o2":
@@ -397,24 +414,127 @@ func _centered_icon(k: String) -> VIcon:
 	return i
 
 
-func _welcome() -> void:
-	var m := Modal.new(false)
-	var fish := UI.hbox(0)
-	for f in Game.fish:
-		fish.add_child(FishPreview.make(f.genes, 1.4))
-	m.centered(fish)
-	m.centered(UI.title("¡Bienvenido a AquaCraft!", 40))
-	var t := UI.wrap(UI.label("Tu primera pecera ya tiene inquilinos. Dales de comer, mantén el cristal limpio y cría peces únicos para vender. Las misiones te guiarán.", 25, UI.MUTED))
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	m.box.add_child(t)
-	var go := UI.button("¡A bucear!", UI.CORAL, UI.CORAL_D)
-	go.custom_minimum_size.y = 72
-	go.pressed.connect(func():
-		Game.started = true
-		Game.save_game()
-		m.close())
-	m.box.add_child(go)
+func start_tutorial() -> void:
+	if _tutorial and is_instance_valid(_tutorial):
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 5
+	add_child(layer)
+	_tutorial = Tutorial.new()
+	_tutorial.hud = self
+	_tutorial.main = main
+	layer.add_child(_tutorial)
+	_tutorial.tree_exited.connect(layer.queue_free)
+
+
+## Ficha de un aparato: estado, efecto y mantenimiento (mantener pulsado).
+func open_equipment(slot: String) -> void:
+	var id: String = Game.equipment.get(slot, "")
+	var m := Modal.new()
+	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star", "thermo": "thermo"}
+	m.centered(VIcon.make(icons[slot], 64))
+	if id == "":
+		m.centered(UI.title(Catalog.SLOT_NAMES[slot], 38))
+		m.box.add_child(_center_label("Llevas la luz básica de serie. Una pantalla LED da más color y felicidad.", 24))
+	else:
+		var e: Dictionary = Catalog.EQUIPMENT[id]
+		m.centered(UI.title(e.name, 36))
+		m.box.add_child(_center_label(e.desc, 23))
+		if e.wear > 0.0:
+			var cond := Game.condition(slot)
+			var row := UI.hbox(12)
+			row.add_child(UI.label("Estado", 24, UI.NAVY, UI.bold))
+			var bar := UI.bar(cond, UI.GOOD if cond >= 60.0 else (UI.WARN if cond >= 30.0 else UI.BAD), 18)
+			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(bar)
+			row.add_child(UI.label("%d%%" % roundi(cond), 24, UI.NAVY, UI.bold))
+			m.box.add_child(row)
+			if cond < 60.0:
+				m.box.add_child(_center_label("Rinde al %d%%. Hazle mantenimiento para que vuelva a funcionar al máximo." % roundi(Game.efficiency(slot) * 100.0), 21, UI.BAD))
+			m.box.add_child(_hold_button("Mantén pulsado: %s" % e.maint, func():
+				Game.maintain(slot)
+				m.close()))
+		else:
+			m.box.add_child(_center_label("No necesita mantenimiento.", 22, UI.MUTED))
+		if id == "calentador":
+			var t := UI.button("Ajustar temperatura")
+			t.pressed.connect(func():
+				m.close()
+				open_thermostat())
+			m.box.add_child(t)
+	var shop := UI.button("Ver otros modelos", UI.SAND, Color("e2d3bd"))
+	shop.add_theme_color_override("font_color", UI.NAVY)
+	shop.pressed.connect(func():
+		m.close()
+		open_shop(2))
+	m.box.add_child(shop)
 	_show_modal(m)
+
+
+## Opciones de una decoración colocada (modo Decorar).
+func open_decor_menu(i: int) -> void:
+	if i < 0 or i >= Game.decor.size():
+		return
+	var it: Dictionary = Game.decor[i]
+	var d: Dictionary = Catalog.DECOR[it.id]
+	var m := Modal.new()
+	var pv := Previews.decor(it.id, 150)
+	pv.custom_minimum_size.x = 300
+	m.centered(pv)
+	m.centered(UI.title(d.name, 36))
+	m.box.add_child(_center_label(d.desc, 22))
+	var layers := ["Al fondo", "En medio", "Delante de los peces"]
+	var row := UI.hbox(10)
+	var flip := UI.button("Voltear")
+	flip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flip.pressed.connect(func():
+		Game.flip_decor(i)
+		m.close())
+	row.add_child(flip)
+	var layer := UI.button(layers[(int(it.layer) + 1) % 3], UI.LAV, UI.LAV_D)
+	layer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	layer.pressed.connect(func():
+		Game.cycle_decor_layer(i)
+		m.close())
+	row.add_child(layer)
+	m.box.add_child(row)
+	m.box.add_child(_center_label("Ahora: %s" % layers[int(it.layer)].to_lower(), 20, UI.MUTED))
+	var store := UI.button("Guardar en el inventario", UI.CORAL, UI.CORAL_D)
+	store.pressed.connect(func():
+		main.tank.selected_decor = -1
+		Game.store_decor(i)
+		m.close())
+	m.box.add_child(store)
+	_show_modal(m)
+
+
+func _center_label(text: String, size := 24, color := UI.MUTED) -> Label:
+	var l := UI.wrap(UI.label(text, size, color, UI.bold if color != UI.MUTED else null))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	return l
+
+
+## Botón que hay que mantener pulsado (evita mantenimientos por error y da sensación de "hacerlo").
+func _hold_button(text: String, on_done: Callable) -> Button:
+	var b := UI.button(text, UI.TEAL, UI.TEAL_D)
+	b.custom_minimum_size.y = 76
+	var fill := ColorRect.new()
+	fill.color = Color(1, 1, 1, 0.28)
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fill.size = Vector2(0, 0)
+	b.add_child(fill)
+	var tw: Array = [null]
+	b.button_down.connect(func():
+		fill.size = Vector2(0, b.size.y)
+		tw[0] = b.create_tween()
+		tw[0].tween_property(fill, "size:x", b.size.x, 1.2)
+		tw[0].tween_callback(on_done))
+	b.button_up.connect(func():
+		if tw[0] and tw[0].is_running():
+			tw[0].kill()
+			fill.size.x = 0.0)
+	return b
 
 
 func _on_level_up(lv: int) -> void:

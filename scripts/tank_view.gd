@@ -33,6 +33,12 @@ var _algae_img: Image
 var _algae_tex: ImageTexture
 var _algae_dirty := true
 var _sub_seed := 1.3
+var _front: Node2D
+var _top: Node2D
+var _decor_nodes: Array = []
+var equip_rects := {}                ## hueco → Rect2 local (para tocar y avisos)
+var editing := false                 ## modo Decorar
+var selected_decor := -1
 
 
 func _ready() -> void:
@@ -45,6 +51,8 @@ func _ready() -> void:
 	_eggs = _node()
 	_eggs.draw.connect(_draw_eggs)
 	_fish_layer = _node()
+	_front = _node()
+	_front.z_index = 25
 	food = FoodLayer.new()
 	food.tank = self
 	add_child(food)
@@ -72,6 +80,9 @@ func _ready() -> void:
 	add_child(overlay)
 	_glass = _rect(GLASS)
 	_glass.z_index = 50
+	_top = _node()
+	_top.z_index = 55
+	_top.draw.connect(_draw_top)
 	_algae_img = Image.create_from_data(Game.GW, Game.GH, false, Image.FORMAT_L8, Game.algae)
 	_algae_tex = ImageTexture.create_from_image(_algae_img)
 	_glass.material.set_shader_parameter("algae", _algae_tex)
@@ -142,7 +153,7 @@ func rebuild() -> void:
 
 func _refresh_water() -> void:
 	var w := Game.water()
-	var light := 1.15 if Game.equipment.light != "" else 0.8
+	var light := lerpf(0.8, 1.15, Game.efficiency("light")) if Game.equipment.light != "" else 0.8
 	_water.material.set_shader_parameter("murk", clampf((w.dirt - 20.0) / 70.0, 0.0, 1.0))
 	_water.material.set_shader_parameter("light", light)
 	_sub.material.set_shader_parameter("light", light)
@@ -154,6 +165,8 @@ func set_night(n: float) -> void:
 
 
 func _process(_dt: float) -> void:
+	if editing or not Game.needs_maintenance().is_empty():
+		_top.queue_redraw()
 	if not Game.eggs.is_empty():
 		_eggs.queue_redraw()
 	if _algae_dirty:
@@ -229,34 +242,34 @@ func clean_stroke(p: Vector2) -> void:
 # ───────────────────────── Decoración y equipo ─────────────────────────
 
 func _build_decor() -> void:
-	for n in _back.get_children() + _mid.get_children():
+	for n in _back.get_children() + _mid.get_children() + _front.get_children():
 		n.queue_free()
 	for c in _chest_bubbles:
 		c.queue_free()
 	_chest_bubbles.clear()
+	_decor_nodes.clear()
 	var u := decor_scale()
-	var slots: int = Catalog.TANKS[Game.tank_tier].slots
-	var xs := _slot_positions(slots)
 	for i in Game.decor.size():
-		var id: String = Game.decor[i]
-		var d: Dictionary = Catalog.DECOR[id]
+		var it: Dictionary = Game.decor[i]
+		var d: Dictionary = Catalog.DECOR[it.id]
 		var item := DecorItem.new()
-		item.id = id
-		item.u = u * (1.1 if d.kind == "plant" else 1.0)
+		item.id = it.id
+		item.index = i
+		item.layer = int(it.layer)
+		item.u = u * (1.1 if d.kind == "plant" else 1.0) * (1.08 if item.layer == 2 else 1.0)
 		item.sd = i * 977 + Game.tank_tier
-		var x: float = xs[i] * size.x
-		item.position = Vector2(x, surface_y(x) + (2.0 if d.kind == "plant" else 6.0))
+		item.scale.x = -1.0 if it.flip else 1.0
 		if d.kind == "plant":
 			var m := ShaderMaterial.new()
 			m.shader = SWAY
-			m.set_shader_parameter("height", DecorArt.BOUNDS[id].size.y * item.u)
+			m.set_shader_parameter("height", DecorArt.BOUNDS[it.id].size.y * item.u)
 			m.set_shader_parameter("amp", 8.0 * u)
 			m.set_shader_parameter("phase", i * 1.7)
 			item.material = m
-			_back.add_child(item)
-		else:
-			_mid.add_child(item)
-		if id == "cofre":
+		[_back, _mid, _front][item.layer].add_child(item)
+		_decor_nodes.append(item)
+		set_decor_x(i, it.x * size.x)
+		if it.id == "cofre":
 			var cb := _make_bubbles()
 			cb.amount = 10
 			cb.explosiveness = 0.85
@@ -267,21 +280,54 @@ func _build_decor() -> void:
 			move_child(cb, _fish_layer.get_index())
 
 
-## Orden de llenado: extremos primero y luego hacia el centro, con un poco de azar fijo.
-func _slot_positions(n: int) -> Array:
-	var raw: Array = []
-	for i in n:
-		raw.append(0.1 + 0.8 * (i + 0.5) / n + sin(i * 12.9898) * 0.025)
-	var order: Array = []
-	var lo := 0
-	var hi := n - 1
-	while lo <= hi:
-		order.append(raw[lo])
-		if hi != lo:
-			order.append(raw[hi])
-		lo += 1
-		hi -= 1
-	return order
+## Mueve el dibujo de una decoración (durante el arrastre; Game se actualiza al soltar).
+func set_decor_x(i: int, x: float) -> void:
+	var item: DecorItem = _decor_nodes[i]
+	x = clampf(x, size.x * 0.03, size.x * 0.97)
+	item.position = Vector2(x, surface_y(x) + [2.0, 6.0, 16.0][item.layer])
+
+
+func decor_x(i: int) -> float:
+	return _decor_nodes[i].position.x
+
+
+func queue_redraw_top() -> void:
+	_top.queue_redraw()
+
+
+## Decoración bajo el dedo (la de delante primero). -1 si no hay.
+func decor_at(p: Vector2) -> int:
+	var best := -1
+	var best_key := -1.0
+	for item: DecorItem in _decor_nodes:
+		var b: Rect2 = DecorArt.BOUNDS[item.id]
+		var r := Rect2(b.position * item.u, b.size * item.u)
+		if item.scale.x < 0.0:
+			r.position.x = -r.end.x
+		if r.grow(6.0).has_point(p - item.position):
+			var key := item.layer * 100.0 + item.index
+			if key > best_key:
+				best_key = key
+				best = item.index
+	return best
+
+
+func decor_rect(i: int) -> Rect2:
+	var item: DecorItem = _decor_nodes[i]
+	var b: Rect2 = DecorArt.BOUNDS[item.id]
+	var r := Rect2(b.position * item.u, b.size * item.u)
+	if item.scale.x < 0.0:
+		r.position.x = -r.end.x
+	r.position += item.position
+	return r
+
+
+## Aparato bajo el dedo ("" si ninguno). Incluye la tapa (luz) por encima del agua.
+func equipment_at(p: Vector2) -> String:
+	for slot in ["thermo", "filter", "heater", "pump", "light"]:
+		if equip_rects.has(slot) and (equip_rects[slot] as Rect2).grow(10.0).has_point(p):
+			return slot
+	return ""
 
 
 func _make_bubbles() -> CPUParticles2D:
@@ -303,13 +349,19 @@ func _make_bubbles() -> CPUParticles2D:
 	return p
 
 
+## Burbujas del aireador: menos cuanto más sucia está la piedra.
 func _build_pump() -> void:
-	var amount: int = {"difusor": 14, "bomba": 26, "circulacion": 38}.get(Game.equipment.pump, 0)
+	_bubbles.position = Vector2(size.x * 0.08, surface_y(size.x * 0.08) - 8.0)
+	_bubbles.lifetime = _bubbles.position.y / 130.0
+	_update_pump_amount()
+
+
+func _update_pump_amount() -> void:
+	var base: int = {"difusor": 14, "bomba": 26, "circulacion": 38}.get(Game.equipment.pump, 0)
+	var amount := maxi(2, int(base * snappedf(Game.efficiency("pump"), 0.25))) if base > 0 else 0
 	_bubbles.emitting = amount > 0
-	if amount > 0:
+	if amount > 0 and amount != _bubbles.amount:
 		_bubbles.amount = amount
-		_bubbles.position = Vector2(size.x * 0.08, surface_y(size.x * 0.08) - 8.0)
-		_bubbles.lifetime = _bubbles.position.y / 130.0
 
 
 func _fade_ramp() -> Gradient:
@@ -325,35 +377,89 @@ func _draw_equipment() -> void:
 	var ci := _equip
 	var e: Dictionary = Game.equipment
 	var u := decor_scale()
+	equip_rects.clear()
+	equip_rects["light"] = Rect2(0, -34, size.x, 34)
+	var grime := Color(0.36, 0.3, 0.16)
 	if e.pump != "":
 		var p := Vector2(size.x * 0.08, surface_y(size.x * 0.08) - 4.0)
 		ci.draw_line(p, Vector2(p.x - 10, 0), Color(0.85, 0.95, 0.95, 0.35), 2.5 * u, true)
-		ci.draw_colored_polygon(DecorArt.ell(p, 14 * u, 6 * u), Color(0.55, 0.58, 0.62))
-		ci.draw_colored_polygon(DecorArt.ell(p + Vector2(0, -2), 12 * u, 3 * u), Color(0.75, 0.78, 0.82))
+		var stone := Color(0.75, 0.78, 0.82).lerp(grime, 1.0 - Game.efficiency("pump"))
+		ci.draw_colored_polygon(DecorArt.ell(p, 14 * u, 6 * u), stone.darkened(0.25))
+		ci.draw_colored_polygon(DecorArt.ell(p + Vector2(0, -2), 12 * u, 3 * u), stone)
+		equip_rects["pump"] = Rect2(p - Vector2(18, 14) * u, Vector2(36, 22) * u)
 	if e.heater != "":
-		var x := size.x * 0.03
-		var r := Rect2(x, size.y * 0.06, 13 * u, size.y * 0.42)
-		ci.draw_rect(r, Color(0.8, 0.95, 1.0, 0.28))
-		var on := absf(Game.water_temp - Game.heater_target) > 0.2
-		ci.draw_rect(Rect2(r.position + Vector2(4 * u, 20 * u), Vector2(5 * u, r.size.y - 30 * u)), Color(1.0, 0.45, 0.2, 0.85 if on else 0.35))
+		var r := Rect2(size.x * 0.03, size.y * 0.06, 13 * u, size.y * 0.42)
+		ci.draw_rect(r, Color(0.8, 0.95, 1.0, 0.28).lerp(Color(0.9, 0.9, 0.85, 0.6), 1.0 - Game.efficiency("heater")))
+		var on := Game.water_temp < Game._temp_target() - 0.1
+		ci.draw_rect(Rect2(r.position + Vector2(4 * u, 20 * u), Vector2(5 * u, r.size.y - 30 * u)), Color(1.0, 0.45, 0.2, 0.85 if on else 0.3))
 		ci.draw_rect(Rect2(r.position, Vector2(r.size.x, 16 * u)), Color(0.15, 0.17, 0.2))
+		equip_rects["heater"] = r
+	var dirty := 1.0 - Game.efficiency("filter")
 	match e.filter:
 		"esponja":
 			var c := Vector2(size.x * 0.92, surface_y(size.x * 0.92))
 			ci.draw_line(c + Vector2(0, -60 * u), Vector2(c.x, 0), Color(0.85, 0.95, 0.95, 0.4), 3.0 * u, true)
 			var sp := Rect2(c + Vector2(-16, -62) * u, Vector2(32, 58) * u)
-			ci.draw_rect(sp, Color(0.18, 0.2, 0.22))
+			ci.draw_rect(sp, Color(0.18, 0.2, 0.22).lerp(grime, dirty))
 			for k in 6:
-				ci.draw_line(sp.position + Vector2(0, 8 + k * 9) * u, sp.position + Vector2(32, 8 + k * 9) * u, Color(0.28, 0.3, 0.33), 2.0, true)
+				ci.draw_line(sp.position + Vector2(0, 8 + k * 9) * u, sp.position + Vector2(32, 8 + k * 9) * u, Color(0.28, 0.3, 0.33).lerp(grime.lightened(0.1), dirty), 2.0, true)
+			equip_rects["filter"] = sp
 		"mochila":
-			ci.draw_rect(Rect2(size.x * 0.78, -6, 70 * u, 64 * u), Color(0.16, 0.18, 0.2))
-			ci.draw_rect(Rect2(size.x * 0.78 + 8, 52 * u, 54 * u, 10 * u), Color(0.85, 0.95, 1.0, 0.35))
-			ci.draw_rect(Rect2(size.x * 0.78 + 22 * u, 58 * u, 18 * u, size.y * 0.5), Color(0.2, 0.22, 0.24))
+			var r := Rect2(size.x * 0.78, -6, 70 * u, 64 * u)
+			ci.draw_rect(r, Color(0.16, 0.18, 0.2))
+			ci.draw_rect(Rect2(r.position.x + 8, 52 * u, 54 * u, 10 * u), Color(0.85, 0.95, 1.0, 0.4 * (1.0 - dirty)))
+			ci.draw_rect(Rect2(r.position.x + 22 * u, 58 * u, 18 * u, size.y * 0.5), Color(0.2, 0.22, 0.24).lerp(grime, dirty))
+			equip_rects["filter"] = Rect2(r.position, Vector2(r.size.x, 58 * u + size.y * 0.5))
 		"canister":
 			var x := size.x * 0.9
-			ci.draw_line(Vector2(x, 0), Vector2(x, size.y * 0.7), Color(0.6, 0.9, 0.75, 0.45), 9 * u, true)
-			ci.draw_rect(Rect2(x - 8 * u, size.y * 0.7, 16 * u, 40 * u), Color(0.6, 0.9, 0.75, 0.4))
-			ci.draw_line(Vector2(size.x * 0.12, 0), Vector2(size.x * 0.12, size.y * 0.12), Color(0.6, 0.9, 0.75, 0.45), 9 * u, true)
+			var pipe := Color(0.6, 0.9, 0.75, 0.45).lerp(Color(0.45, 0.45, 0.2, 0.7), dirty)
+			ci.draw_line(Vector2(x, 0), Vector2(x, size.y * 0.7), pipe, 9 * u, true)
+			ci.draw_rect(Rect2(x - 8 * u, size.y * 0.7, 16 * u, 40 * u), pipe)
+			ci.draw_line(Vector2(size.x * 0.12, 0), Vector2(size.x * 0.12, size.y * 0.12), pipe, 9 * u, true)
+			equip_rects["filter"] = Rect2(x - 14 * u, 0, 28 * u, size.y * 0.7 + 40 * u)
+	match e.thermo:
+		"tira": equip_rects["thermo"] = Rect2(size.x - 40 * u, size.y * 0.1, 20 * u, size.y * 0.24)
+		"digital": equip_rects["thermo"] = Rect2(size.x - 104 * u, size.y * 0.07, 86 * u, 40 * u)
+	_build_pump()
+	_top.queue_redraw()
+
+
+## Por encima del cristal: termómetro pegado, avisos de mantenimiento y selección del modo Decorar.
+func _draw_top() -> void:
+	var ci := _top
+	var u := decor_scale()
+	var font := UI.bold
+	if equip_rects.has("thermo"):
+		var r: Rect2 = equip_rects.thermo
+		if Game.equipment.thermo == "tira":
+			ci.draw_rect(r, Color(0.08, 0.1, 0.12, 0.9))
+			var t := clampi(roundi(Game.water_temp), 18, 31)
+			for k in 7:
+				var deg := 30 - k * 2
+				var cell := Rect2(r.position + Vector2(3, 4 + k * (r.size.y - 8) / 7.0), Vector2(r.size.x - 6, (r.size.y - 8) / 7.0 - 2))
+				var lit := absi(deg - t) <= 1
+				ci.draw_rect(cell, Color(0.3, 0.95, 0.5) if lit else Color(0.2, 0.25, 0.3))
+				if lit:
+					ci.draw_string(font, cell.position + Vector2(-34 * u, cell.size.y), str(deg), HORIZONTAL_ALIGNMENT_LEFT, -1, int(15 * u), Color.WHITE)
+		else:
+			ci.draw_rect(r, Color(0.92, 0.94, 0.96))
+			ci.draw_rect(r.grow(-4), Color(0.55, 0.75, 0.6) if Game.condition("thermo") > 0.0 else Color(0.4, 0.45, 0.42))
+			var txt := Game.thermometer_text()
+			ci.draw_string(font, r.position + Vector2(8, r.size.y * 0.72), txt, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 10, int(22 * u), Color(0.08, 0.15, 0.1))
+	var t := Time.get_ticks_msec() / 1000.0
+	for slot in Game.needs_maintenance():
+		if equip_rects.has(slot):
+			var r: Rect2 = equip_rects[slot]
+			var p := Vector2(clampf(r.get_center().x, 20.0, size.x - 20.0), maxf(r.position.y, 4.0) + 18.0 + sin(t * 3.0) * 3.0)
+			ci.draw_circle(p, 15.0, UI.WARN)
+			ci.draw_string(font, p + Vector2(-4, 8), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
+	if editing:
+		for i in _decor_nodes.size():
+			var r := decor_rect(i)
+			var sel := i == selected_decor
+			ci.draw_rect(r, Color(1, 1, 1, 0.9 if sel else 0.35), false, 3.0 if sel else 1.5)
+			if sel:
+				ci.draw_rect(r, Color(1, 1, 1, 0.08))
 
 
 func _draw_eggs() -> void:
@@ -372,6 +478,8 @@ func _draw_eggs() -> void:
 
 class DecorItem extends Node2D:
 	var id: String
+	var index := 0
+	var layer := 1
 	var u := 1.0
 	var sd := 0
 

@@ -3,7 +3,7 @@ extends Node2D
 
 const ROOM := preload("res://shaders/room.gdshader")
 
-enum Mode { NORMAL, FEED, CLEAN }
+enum Mode { NORMAL, FEED, CLEAN, EDIT }
 
 var mode := Mode.NORMAL
 var food_type := "escamas"
@@ -15,6 +15,10 @@ var _room: ColorRect
 var _furniture: Node2D
 var _frame: Node2D
 var _last_drag := Vector2.INF
+var _drag_idx := -1                  ## decoración que se arrastra en modo Decorar
+var _drag_off := 0.0
+var _drag_from := Vector2.ZERO
+var _drag_moved := false
 var _feed_cd := 0.0
 var _night := 0.0
 var _night_acc := 999.0
@@ -61,6 +65,23 @@ func _screenshot() -> void:
 			set_mode(Mode.FEED)
 			for i in 4:
 				tank.food.drop(tank.size.x * (0.25 + i * 0.17), "escamas")
+		"edit":
+			set_mode(Mode.EDIT)
+			tank.selected_decor = 1
+			tank.queue_redraw_top()
+		"equip": hud.open_equipment(open.get_slice(":", 1))
+		"decor": hud.open_decor_menu(0)
+		"tutorial":
+			hud.start_tutorial()
+			await get_tree().process_frame
+			for i in int(open.get_slice(":", 1)):
+				hud._tutorial._advance()
+		"algae":
+			for i in Game.algae.size():
+				Game.algae[i] = mini(255, int(Game._weights[i] * float(open.get_slice(":", 1))))
+			Game._refresh_water()
+			Game.algae_changed.emit()
+			Game.changed.emit()
 		"clean", "dirty":
 			for i in Game.algae.size():
 				Game.algae[i] = mini(255, int(Game._weights[i] * 150.0))
@@ -103,8 +124,9 @@ func _layout() -> void:
 	var tier := Game.tank_tier
 	var stand: float = [96.0, 84.0, 64.0, 40.0][tier]
 	var avail := Rect2(0, top, vp.x, vp.y - top - bottom - stand)
-	var w: float = vp.x * [0.68, 0.86, 0.95, 1.0][tier] - (28.0 if tier == 3 else 0.0)
-	var h: float = minf(avail.size.y * 0.93, w * [0.85, 0.78, 0.86, 1.6][tier])
+	# La pecera crece con la pantalla: en móviles altos aprovecha la altura en vez de dejar pared vacía.
+	var w: float = vp.x * [0.8, 0.88, 0.95, 1.0][tier] - (28.0 if tier == 3 else 0.0)
+	var h: float = minf(avail.size.y * [0.62, 0.74, 0.86, 0.95][tier], w * [1.3, 1.25, 1.4, 2.0][tier])
 	var r := Rect2(Vector2((vp.x - w) * 0.5, avail.end.y - h), Vector2(w, h))
 	_room.size = vp
 	_room.material.set_shader_parameter("size", vp)
@@ -121,6 +143,9 @@ func _layout() -> void:
 func set_mode(m: Mode) -> void:
 	mode = Mode.NORMAL if mode == m else m
 	tank.overlay.sponge_t = 0.0
+	tank.editing = mode == Mode.EDIT
+	tank.selected_decor = -1
+	tank.queue_redraw_top()
 	hud.refresh_mode()
 
 
@@ -129,27 +154,46 @@ func set_mode(m: Mode) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var p := tank.to_local(event.position)
-		var inside := Rect2(Vector2.ZERO, tank.size).has_point(p)
+		# La tapa (luz) queda por encima del agua: también se puede tocar.
+		var inside := Rect2(0, -34, tank.size.x, tank.size.y + 34).has_point(p)
 		if not event.pressed:
 			_last_drag = Vector2.INF
+			if mode == Mode.EDIT:
+				_end_decor_drag()
 			return
 		if not inside:
 			return
 		match mode:
 			Mode.FEED:
-				if _feed_cd <= 0.0 and Game.use_food(food_type):
+				if p.y > 0.0 and _feed_cd <= 0.0 and Game.use_food(food_type):
 					_feed_cd = 0.22
 					tank.food.drop(p.x, food_type)
 					hud.refresh_food()
 			Mode.CLEAN:
 				_last_drag = p
 				tank.clean_stroke(p)
+			Mode.EDIT:
+				_drag_idx = tank.decor_at(p)
+				tank.selected_decor = _drag_idx
+				tank.queue_redraw_top()
+				if _drag_idx >= 0:
+					_drag_off = Game.decor[_drag_idx].x * tank.size.x - p.x
+					_drag_from = p
+					_drag_moved = false
 			Mode.NORMAL:
 				var a := tank.fish_at(p)
+				var slot := tank.equipment_at(p)
 				if a:
 					hud.open_fish(a.data.id)
+				elif slot != "":
+					hud.open_equipment(slot)
 				else:
 					tank.startle(p)
+	elif event is InputEventScreenDrag and mode == Mode.EDIT and _drag_idx >= 0:
+		var p := tank.to_local(event.position)
+		if p.distance_to(_drag_from) > 8.0:
+			_drag_moved = true
+		tank.set_decor_x(_drag_idx, p.x + _drag_off)
 	elif event is InputEventScreenDrag and mode == Mode.CLEAN:
 		var p := tank.to_local(event.position)
 		if not Rect2(Vector2.ZERO, tank.size).has_point(p):
@@ -161,6 +205,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		for i in steps:
 			tank.clean_stroke(_last_drag.lerp(p, float(i + 1) / steps))
 		_last_drag = p
+
+
+## Al soltar: si se movió, se guarda la posición; si fue un toque, se abren sus opciones.
+func _end_decor_drag() -> void:
+	if _drag_idx < 0:
+		return
+	var i := _drag_idx
+	_drag_idx = -1
+	if _drag_moved:
+		Game.move_decor(i, tank.decor_x(i) / tank.size.x)
+		if Game.decor[i].id == "cofre":
+			tank.rebuild()
+		tank.selected_decor = i
+	else:
+		hud.open_decor_menu(i)
 
 
 func _notification(what: int) -> void:

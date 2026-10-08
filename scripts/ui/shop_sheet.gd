@@ -143,35 +143,47 @@ func _tank_tab() -> void:
 
 
 func _equip_tab() -> void:
-	_section("Equipo", "uno de cada tipo")
-	var g := _grid()
-	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star"}
-	for id in Catalog.EQUIPMENT_ORDER:
-		var e: Dictionary = Catalog.EQUIPMENT[id]
-		var cur: String = Game.equipment[e.slot]
-		var act: Control
-		if cur == id:
-			act = _state("Instalado")
-		elif cur != "" and Catalog.EQUIPMENT_ORDER.find(cur) > Catalog.EQUIPMENT_ORDER.find(id):
-			act = _state("Tienes uno mejor")
-		else:
-			act = _price(e.price, "coins", e.level, Game.buy_equipment.bind(id))
-		_card(g, Previews.icon(icons[e.slot]), e.name, e.desc, act)
+	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star", "thermo": "thermo"}
+	for slot in ["filter", "heater", "pump", "light", "thermo"]:
+		_section(Catalog.SLOT_NAMES[slot], "uno a la vez")
+		var g := _grid()
+		for id in Catalog.EQUIPMENT_ORDER:
+			var e: Dictionary = Catalog.EQUIPMENT[id]
+			if e.slot != slot:
+				continue
+			var cur: String = Game.equipment[slot]
+			var act: Control
+			if cur == id:
+				act = _state("Instalado · %d%%" % roundi(Game.condition(slot)) if e.wear > 0.0 else "Instalado")
+			elif cur != "" and Catalog.EQUIPMENT_ORDER.find(cur) > Catalog.EQUIPMENT_ORDER.find(id):
+				act = _state("Tienes uno mejor")
+			else:
+				act = _price(e.price, "coins", e.level, Game.buy_equipment.bind(id))
+			var desc: String = e.desc + ("\nMantenimiento: %s" % e.maint.to_lower() if e.wear > 0.0 else "")
+			_card(g, Previews.icon(icons[slot]), e.name, desc, act)
 
 
 func _decor_tab() -> void:
-	var slots: int = Catalog.TANKS[Game.tank_tier].slots
-	_section("En tu pecera", "%d/%d huecos" % [Game.decor.size(), slots])
-	if Game.decor.is_empty():
-		_list.add_child(UI.label("Aún no has colocado nada.", 22, UI.MUTED))
+	var hint := UI.wrap(UI.label("Coloca y mueve las piezas con el botón «Decorar» de la pantalla principal.", 21, UI.MUTED, UI.bold))
+	_list.add_child(hint)
+	_section("Inventario", "%d/%d colocadas" % [Game.decor.size(), Game.decor_slots()])
+	if Game.decor_inv.is_empty():
+		_list.add_child(UI.label("No tienes piezas guardadas.", 22, UI.MUTED))
 	else:
 		var g := _grid()
-		for i in Game.decor.size():
-			var d: Dictionary = Catalog.DECOR[Game.decor[i]]
-			var b := UI.button("Quitar (+%d)" % int(d.price / 2), UI.CORAL, UI.CORAL_D)
-			b.custom_minimum_size.y = 62
-			b.pressed.connect(_after.bind(Game.remove_decor.bind(i)))
-			_card(g, Previews.decor(Game.decor[i], 110), d.name, "", b)
+		for id in Game.decor_inv:
+			var d: Dictionary = Catalog.DECOR[id]
+			var row := UI.hbox(8)
+			var put := UI.button("Colocar")
+			put.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			put.custom_minimum_size.y = 62
+			put.pressed.connect(_after.bind(Game.place_decor.bind(id)))
+			row.add_child(put)
+			var sell := UI.button("+%d" % int(d.price / 2), UI.CORAL, UI.CORAL_D)
+			sell.custom_minimum_size.y = 62
+			sell.pressed.connect(_after.bind(Game.sell_decor_inv.bind(id)))
+			row.add_child(sell)
+			_card(g, Previews.decor(id, 110), "%s ×%d" % [d.name, Game.decor_inv[id]], "", row)
 	_section("Sustrato")
 	var g2 := _grid()
 	for id in Catalog.SUBSTRATE_ORDER:

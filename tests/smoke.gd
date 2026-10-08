@@ -74,6 +74,23 @@ func _process(delta: float) -> bool:
 			Input.parse_input_event(drag)
 		5:
 			main.set_mode(main.Mode.CLEAN)
+			hud.open_equipment("filter")
+			hud.open_equipment("light")
+			main.set_mode(main.Mode.EDIT)
+			var r: Rect2 = main.tank.decor_rect(0)
+			_touch(r.get_center(), true)
+			var drag := InputEventScreenDrag.new()
+			drag.position = main.tank.to_global(r.get_center() + Vector2(60, 0))
+			Input.parse_input_event(drag)
+			_touch(r.get_center() + Vector2(60, 0), false)
+		6:
+			hud.open_decor_menu(0)
+			game.flip_decor(0)
+			game.cycle_decor_layer(0)
+			hud.start_tutorial()
+		7:
+			for i in 4:
+				hud._tutorial._advance()
 			game.save_game()
 			print("SMOKE: OK  peces=%d huevos=%d nivel=%d" % [game.fish.size(), game.eggs.size(), game.level])
 			return true

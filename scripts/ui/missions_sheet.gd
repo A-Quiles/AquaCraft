@@ -48,6 +48,12 @@ func _build() -> void:
 	var bl := UI.label("Completa las 3 diarias: +3 perlas" + (" (cobrado)" if Game.daily.get("bonus", false) else ""), 22, UI.LAV_D, UI.bold)
 	bonus.add_child(bl)
 	v.add_child(bonus)
+	var tut := UI.button("Repetir el tutorial", UI.SAND, Color("e2d3bd"))
+	tut.add_theme_color_override("font_color", UI.NAVY)
+	tut.pressed.connect(func():
+		close()
+		get_parent().start_tutorial())
+	v.add_child(tut)
 
 
 func _mission_card(text: String, prog: int, target: int, coins: int, pearls: int, claimed: bool, on_claim: Callable) -> Control:

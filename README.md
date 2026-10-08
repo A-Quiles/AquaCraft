@@ -12,8 +12,11 @@ Simulador *cozy* de acuarios para Android: cuida el agua, alimenta a tus peces, 
 | Pecera viva | Agua con rayos de luz y cáusticas, plantas que ondulan, burbujas, motas, luz día/noche según la hora real |
 | Peces | 9 especies dibujadas 100% por shader (sin sprites): cuerpo, aletas, escamas, patrones y animación de nado |
 | Genética | Colores, patrón y tamaño heredados; mutaciones Neón, Albino, Velo, Color raro, Patrón raro y Gigante; 5 rarezas |
-| Cuidados | Hambre, salud, felicidad, temperatura, pH, oxígeno y algas en el cristal que se limpian deslizando el dedo |
-| Mercado | Peces (+2 exóticos al día), 4 peceras, 8 equipos (filtros, calentador, bombas, LED), 14 decoraciones, 5 sustratos, 3 comidas |
+| Cuidados | Hambre, salud, felicidad, temperatura, pH, oxígeno y algas que aparecen poco a poco en el cristal y se limpian deslizando el dedo |
+| Equipo | 12 aparatos en 5 huecos (filtro, calentador, aireador, luz, termómetro). Cada uno se desgasta, rinde menos y avisa; se le hace mantenimiento tocándolo en la pecera |
+| Decoración | Modo Decorar: arrastra cada pieza donde quieras, voltéala, ponla al fondo, en medio o delante de los peces, y guárdala en el inventario |
+| Mercado | Peces (+2 exóticos al día), 4 peceras, 12 equipos, 14 decoraciones, 5 sustratos, 3 comidas |
+| Tutorial | Guía interactiva la primera vez (alimentar, limpiar, mantenimiento, criar, decorar); se puede repetir desde Misiones |
 | Progresión | Nivel de acuarista, 17 misiones de historia (hacen de tutorial), 3 diarias + bonus, colección de variantes |
 | Tiempo real | El acuario sigue vivo con la app cerrada (hasta 48 h) sin que muera ningún pez: es un juego cozy |
 
@@ -66,7 +69,7 @@ godot --headless --resolution 720x1280 -s tests/smoke.gd -- demo=1
 ```
 
 Capturas para la tienda (necesita pantalla): `godot -- demo=2 open=shop:0 shot=captura.png`
-(`demo=0..3` elige la pecera; `open` = `shop:N`, `fish:N`, `missions`, `thermo`, `feed`, `clean`, `dirty`).
+(`demo=0..3` elige la pecera; `open` = `shop:N`, `fish:N`, `missions`, `thermo`, `feed`, `clean`, `dirty`, `edit`, `equip:filter`, `decor`, `tutorial:N`, `algae:N`).
 
 ## Publicar en Google Play
 
