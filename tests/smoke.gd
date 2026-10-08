@@ -1,0 +1,88 @@
+extends SceneTree
+## Prueba de humo de la interfaz: abre todas las pantallas, compra, cría, vende y toca el agua.
+##   godot --headless -s tests/smoke.gd -- demo=1
+## Falla si aparece cualquier error de script (los muestra Godot por stderr).
+
+var main: Node
+var step := 0
+var wait := 0.0
+
+
+func _initialize() -> void:
+	main = load("res://scenes/main.tscn").instantiate()
+	root.add_child(main)
+
+
+func _process(delta: float) -> bool:
+	wait -= delta
+	if wait > 0.0:
+		return false
+	wait = 0.25
+	var hud = main.hud
+	var game: Node = root.get_node("Game")
+	match step:
+		0:
+			game.coins = 99999
+			game.pearls = 999
+			game.level = 10
+			for t in 5:
+				hud.open_shop(t)
+		1:
+			var shop = hud._sheet
+			game.buy_fish("guppy")
+			game.buy_equipment("calentador")
+			game.buy_decor("musgo")
+			game.buy_substrate("pastel")
+			game.buy_food("artemia")
+			game.buy_offer(0)
+			game.buy_tank(2)
+			shop._build()
+		2:
+			hud.open_fish(-1)
+			var fs = hud._sheet
+			var a: Dictionary = game.fish[0]
+			fs._show_detail(a.id)
+			fs._show_partners(a.id)
+			for f in game.fish:
+				f.health = 100.0
+				f.happy = 100.0
+				f.grow = 1.0
+				f.cd = 0.0
+			var partners: Array = game.breed_partners(a)
+			if not partners.is_empty():
+				game.breed(a.id, partners[0].id)
+			fs.tab = 1
+			fs._show_list()
+		3:
+			if not game.eggs.is_empty():
+				game.hatch_now(game.eggs[0].id)
+			game.sell_fish(game.fish[-1].id)
+			hud.open_missions()
+			game.claim_story()
+		4:
+			hud.open_thermostat()
+			hud.back()
+			hud.back()
+			_touch(main.tank.size * 0.5, true)
+			_touch(main.tank.size * 0.5, false)
+			main.set_mode(main.Mode.FEED)
+			_touch(main.tank.size * 0.4, true)
+			main.set_mode(main.Mode.CLEAN)
+			_touch(main.tank.size * 0.3, true)
+			var drag := InputEventScreenDrag.new()
+			drag.position = main.tank.to_global(main.tank.size * 0.6)
+			Input.parse_input_event(drag)
+		5:
+			main.set_mode(main.Mode.CLEAN)
+			game.save_game()
+			print("SMOKE: OK  peces=%d huevos=%d nivel=%d" % [game.fish.size(), game.eggs.size(), game.level])
+			return true
+	step += 1
+	return false
+
+
+func _touch(local: Vector2, pressed: bool) -> void:
+	var e := InputEventScreenTouch.new()
+	e.position = main.tank.to_global(local)
+	e.pressed = pressed
+	Input.parse_input_event(e)

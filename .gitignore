@@ -1,0 +1,13 @@
+# Godot
+.godot/
+*.import.tmp
+/android/
+/build/
+
+# Claves de firma: NUNCA al repositorio
+*.keystore
+*.jks
+keystore.properties
+
+.DS_Store
+Thumbs.db
