@@ -89,6 +89,11 @@ func _process(delta: float) -> bool:
 			game.cycle_decor_layer(0)
 			hud.start_tutorial()
 		7:
+			hud.open_setup()
+			hud.open_mode_picker()
+			hud.open_salinity()
+			game.set_game_mode("realista")
+			hud.open_shop(1)
 			for i in 4:
 				hud._tutorial._advance()
 			game.save_game()

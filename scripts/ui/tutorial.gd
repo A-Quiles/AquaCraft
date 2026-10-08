@@ -7,9 +7,9 @@ const STEPS := [
 	{"text": "¡Hola! Te enseño lo básico en un minuto: alimentar, limpiar, mantener el equipo, criar y decorar.", "wait": "button", "button": "¡Vamos!"},
 	{"text": "Tus peces tienen hambre (mira el bocadillo). Pulsa «Comida».", "target": "bar:feed", "wait": "mode_feed"},
 	{"text": "Toca el agua para echar escamas. Lo que no se coman se pudre y ensucia.", "target": "tank", "wait": "fed"},
-	{"text": "Con el tiempo salen algas en el cristal, poco a poco. Pulsa «Limpiar»…", "target": "bar:clean", "wait": "mode_clean"},
-	{"text": "…y frota el cristal con el dedo hasta que brille.", "target": "tank", "wait": "cleaned"},
-	{"text": "Cada aparato se desgasta y necesita mantenimiento. Tu filtro está sucio: tócalo y mantén pulsado el botón.", "target": "equip:filter", "wait": "maint"},
+	{"text": "Con el tiempo salen algas en el cristal, poco a poco. Pulsa «Limpiar»…", "target": "bar:clean", "wait": "mode_clean", "care": true},
+	{"text": "…y frota el cristal con el dedo hasta que brille.", "target": "tank", "wait": "cleaned", "care": true},
+	{"text": "Cada aparato se desgasta y necesita mantenimiento. Tu filtro está sucio: tócalo y mantén pulsado el botón.", "target": "equip:filter", "wait": "maint", "care": true},
 	{"text": "Para criar, abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
 	{"text": "Dos adultos de la misma especie, sanos y felices, ponen un huevo. Las crías heredan colores, patrón y mutaciones: ¡los raros valen mucho más!", "wait": "button", "button": "Entendido"},
 	{"text": "Por último, pulsa «Decorar»: arrastra plantas y adornos donde quieras y tócalos para voltearlos o cambiarlos de capa.", "target": "bar:edit", "wait": "mode_edit"},
@@ -52,6 +52,9 @@ func _ready() -> void:
 
 func _advance() -> void:
 	step += 1
+	# En modo Relax no hay algas ni desgaste: esos pasos sobran.
+	while step < STEPS.size() and STEPS[step].get("care", false) and Game.mode == "basico":
+		step += 1
 	if step >= STEPS.size():
 		_finish()
 		return

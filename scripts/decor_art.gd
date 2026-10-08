@@ -11,6 +11,9 @@ const BOUNDS := {
 	"cueva": Rect2(-88, -66, 176, 69), "castillo": Rect2(-70, -192, 140, 195),
 	"anfora": Rect2(-62, -64, 124, 67), "barco": Rect2(-125, -190, 250, 195),
 	"cofre": Rect2(-42, -72, 84, 75), "coral": Rect2(-85, -155, 170, 158),
+	"caulerpa": Rect2(-55, -125, 110, 128), "anemona": Rect2(-70, -105, 140, 108),
+	"coral_blando": Rect2(-60, -120, 120, 123), "roca_viva": Rect2(-80, -78, 160, 81),
+	"coral_cerebro": Rect2(-62, -66, 124, 69),
 }
 
 
@@ -32,6 +35,11 @@ static func draw(ci: CanvasItem, id: String, u: float, sd: int) -> void:
 		"barco": _barco(ci, u, rng)
 		"cofre": _cofre(ci, u, rng)
 		"coral": _coral(ci, u, rng)
+		"caulerpa": _caulerpa(ci, u, rng)
+		"anemona": _anemona(ci, u, rng)
+		"coral_blando": _coral_blando(ci, u, rng)
+		"roca_viva": _roca_viva(ci, u, rng)
+		"coral_cerebro": _coral_cerebro(ci, u, rng)
 
 
 # ───────────────────────── Plantas ─────────────────────────
@@ -302,6 +310,80 @@ static func _coral_branch(ci: CanvasItem, p: Vector2, a: float, l: float, w: flo
 		return
 	for s in [-1.0, 1.0]:
 		_coral_branch(ci, e, a + s * rng.randf_range(0.3, 0.6), l * rng.randf_range(0.62, 0.78), w * 0.72, depth - 1, rng)
+
+
+# ───────────────────────── Agua salada ─────────────────────────
+
+static func _caulerpa(ci: CanvasItem, u: float, rng: RandomNumberGenerator) -> void:
+	ci.draw_line(Vector2(-45, -3) * u, Vector2(45, -3) * u, Color(0.2, 0.45, 0.2), 3.0 * u, true)
+	for s in 7:
+		var base := Vector2(lerpf(-40, 40, s / 6.0) + rng.randf_range(-5, 5), -3) * u
+		var h := rng.randf_range(55, 118) * u
+		var bend := rng.randf_range(-14, 14) * u
+		var n := int(h / (6.5 * u))
+		for i in n:
+			var t := float(i) / n
+			var p := base + Vector2(bend * t * t, -h * t)
+			var col := Color(0.18, 0.5, 0.22).lerp(Color(0.5, 0.86, 0.4), t)
+			for side in [-1.0, 1.0]:
+				ci.draw_circle(p + Vector2(side * 4.5 * u, 0), (3.6 - t * 1.2) * u, col)
+			ci.draw_circle(p + Vector2(-1, -1) * u, 1.2 * u, Color(0.8, 1.0, 0.7, 0.6))
+
+
+static func _anemona(ci: CanvasItem, u: float, rng: RandomNumberGenerator) -> void:
+	var col := PackedVector2Array([Vector2(-26, 0) * u, Vector2(26, 0) * u, Vector2(22, -26) * u, Vector2(-22, -26) * u])
+	ci.draw_polygon(col, DecorArt.vgrad(col, Color(0.85, 0.45, 0.4), Color(0.55, 0.25, 0.22)))
+	for i in 24:
+		var a := lerpf(-1.25, 1.25, i / 23.0) + rng.randf_range(-0.08, 0.08)
+		var base := Vector2(lerpf(-20, 20, i / 23.0), -24) * u
+		var l := rng.randf_range(50, 78) * u * (1.0 - absf(a) * 0.25)
+		var tip := base + Vector2(sin(a), -cos(a)) * l
+		var c0 := Color(0.45, 0.75, 0.4)
+		var c1 := Color(1.0, 0.55, 0.75) if i % 3 != 0 else Color(0.95, 0.7, 0.85)
+		blade(ci, base, l, 9.0 * u, sin(a) * l * 0.9, c0, c1, 8)
+		ci.draw_circle(base + Vector2(sin(a) * l * 0.9, -l), 5.2 * u, c1.lightened(0.15))
+
+
+static func _coral_blando(ci: CanvasItem, u: float, rng: RandomNumberGenerator) -> void:
+	var tone := Color(0.95, 0.72, 0.6).lerp(Color(0.85, 0.6, 0.9), rng.randf())
+	for b in 5:
+		var a := lerpf(-0.7, 0.7, b / 4.0) + rng.randf_range(-0.1, 0.1)
+		var base := Vector2(rng.randf_range(-12, 12), 0) * u
+		var mid := base + Vector2(sin(a) * 30, -45 - rng.randf_range(0, 15)) * u
+		var tip := mid + Vector2(sin(a) * 25, -rng.randf_range(35, 60)) * u
+		limb(ci, [base, mid, tip], [16.0 * u, 13.0 * u, 10.0 * u], tone.lightened(0.15), tone.darkened(0.25))
+		for k in 14:
+			var p := tip + Vector2(rng.randf_range(-12, 12), rng.randf_range(-12, 6)) * u
+			ci.draw_circle(p, 3.2 * u, Color(1.0, 0.95, 0.85, 0.85))
+			ci.draw_circle(p, 1.3 * u, tone.darkened(0.2))
+
+
+static func _roca_viva(ci: CanvasItem, u: float, rng: RandomNumberGenerator) -> void:
+	stone(ci, Vector2(-26, -30) * u, 50 * u, 32 * u, Color(0.62, 0.55, 0.5), rng)
+	stone(ci, Vector2(30, -22) * u, 40 * u, 24 * u, Color(0.6, 0.52, 0.48), rng)
+	stone(ci, Vector2(-4, -58) * u, 30 * u, 18 * u, Color(0.66, 0.58, 0.52), rng)
+	for i in 14:
+		var c := Vector2(rng.randf_range(-62, 60), -rng.randf_range(8, 70)) * u
+		ci.draw_colored_polygon(ell(c, rng.randf_range(5, 13) * u, rng.randf_range(3, 7) * u, 12), Color(0.72, 0.38, 0.62, 0.75))
+	for i in 18:
+		ci.draw_circle(Vector2(rng.randf_range(-60, 58), -rng.randf_range(6, 66)) * u, rng.randf_range(1.5, 3.5) * u, Color(0.2, 0.15, 0.15, 0.55))
+
+
+static func _coral_cerebro(ci: CanvasItem, u: float, rng: RandomNumberGenerator) -> void:
+	var dome := PackedVector2Array()
+	for i in 33:
+		var a := PI + PI * i / 32.0
+		dome.append(Vector2(cos(a) * 60, sin(a) * 62 + 2) * u)
+	ci.draw_polygon(dome, vgrad(dome, Color(0.78, 0.86, 0.5), Color(0.45, 0.52, 0.3)))
+	for k in 7:
+		var r := 8.0 + k * 7.5
+		var pts := PackedVector2Array()
+		for i in 41:
+			var a := PI + PI * i / 40.0
+			var w := r + 3.0 * sin(i * 0.9 + k * 1.7)
+			pts.append(Vector2(cos(a) * w * 0.97, sin(a) * w + 2) * u)
+		ci.draw_polyline(pts, Color(0.32, 0.4, 0.22, 0.75), 2.4 * u, true)
+	ci.draw_colored_polygon(ell(Vector2(-20, -42) * u, 20 * u, 9 * u, 16), Color(1, 1, 0.9, 0.16))
 
 
 # ───────────────────────── Utilidades de dibujo ─────────────────────────

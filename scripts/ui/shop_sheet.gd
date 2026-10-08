@@ -120,6 +120,8 @@ func _fish_tab() -> void:
 	g = _grid()
 	for sp in Catalog.SPECIES_ORDER:
 		var s: Dictionary = Catalog.SPECIES[sp]
+		if not Catalog.fits(s, Game.water_kind):
+			continue
 		var r := RandomNumberGenerator.new()
 		r.seed = hash(sp)
 		var desc := "%s\n%d–%d °C · pH %.1f–%.1f" % [s.desc, s.temp[0], s.temp[1], s.ph[0], s.ph[1]]
@@ -140,16 +142,21 @@ func _tank_tab() -> void:
 		else:
 			act = _price(t.price, "coins", t.level, Game.buy_tank.bind(i))
 		_card(g, Previews.icon("tank", 140, 70 + i * 14), t.name, desc, act)
+	var other := "salada" if Game.water_kind == "dulce" else "dulce"
+	_section("Tipo de agua", Catalog.WATER_NAMES[Game.water_kind])
+	var g2 := _grid()
+	var desc := "Peces, plantas y cuidados distintos. La pecera debe estar vacía; lo incompatible se guarda."
+	_card(g2, Previews.icon("ph"), "Pasar a %s" % Catalog.WATER_NAMES[other].to_lower(), desc, _price(400, "coins", 1, Game.convert_water))
 
 
 func _equip_tab() -> void:
-	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star", "thermo": "thermo"}
-	for slot in ["filter", "heater", "pump", "light", "thermo"]:
+	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star", "thermo": "thermo", "ato": "ph"}
+	for slot in (["filter", "heater", "pump", "light", "thermo", "ato"] if Game.water_kind == "salada" else ["filter", "heater", "pump", "light", "thermo"]):
 		_section(Catalog.SLOT_NAMES[slot], "uno a la vez")
 		var g := _grid()
 		for id in Catalog.EQUIPMENT_ORDER:
 			var e: Dictionary = Catalog.EQUIPMENT[id]
-			if e.slot != slot:
+			if e.slot != slot or not Catalog.fits(e, Game.water_kind):
 				continue
 			var cur: String = Game.equipment[slot]
 			var act: Control
@@ -188,6 +195,8 @@ func _decor_tab() -> void:
 	var g2 := _grid()
 	for id in Catalog.SUBSTRATE_ORDER:
 		var s: Dictionary = Catalog.SUBSTRATES[id]
+		if not Catalog.fits(s, Game.water_kind):
+			continue
 		var act: Control
 		if Game.substrate == id:
 			act = _state("En uso")
@@ -205,6 +214,8 @@ func _decor_tab() -> void:
 	var g3 := _grid()
 	for id in Catalog.DECOR_ORDER:
 		var d: Dictionary = Catalog.DECOR[id]
+		if not Catalog.fits(d, Game.water_kind):
+			continue
 		_card(g3, Previews.decor(id), d.name, d.desc, _price(d.price, d.cur, d.level, Game.buy_decor.bind(id)))
 
 

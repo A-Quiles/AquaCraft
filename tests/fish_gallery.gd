@@ -10,23 +10,22 @@ func _init() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		out = args[0]
-	root.size = Vector2i(900, 1100)
+	root.size = Vector2i(960, 1440)
 	var bg := ColorRect.new()
 	bg.color = Color("0b4a63")
-	bg.size = Vector2(900, 1100)
+	bg.size = Vector2(960, 1440)
 	root.add_child(bg)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
-	var y := 70.0
+	var i := 0
 	for sp in Catalog.SPECIES_ORDER:
-		var x := 90.0
-		for v in 4:
-			var g := Genetics.random_genes(sp, rng, [0, 0, 1, 2][v])
+		for v in 1:
+			var g := Genetics.random_genes(sp, rng, 0)
 			var node := FishPreview.make(g, 1.6)
-			node.position = Vector2(x, y)
+			var c := Vector2(160 + (i % 3) * 320, 90 + (i / 3) * 270)
+			node.position = c - node.custom_minimum_size * 0.5 + Vector2(0, 40)
 			root.add_child(node)
-			x += 210.0
-		y += 118.0
+			i += 1
 	await process_frame
 	await process_frame
 	await create_timer(0.3).timeout

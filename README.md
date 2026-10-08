@@ -10,7 +10,9 @@ Simulador *cozy* de acuarios para Android: cuida el agua, alimenta a tus peces, 
 | Sistema | Detalle |
 |---|---|
 | Pecera viva | Agua con rayos de luz y cáusticas, plantas que ondulan, burbujas, motas, luz día/noche según la hora real |
-| Peces | 9 especies dibujadas 100% por shader (sin sprites): cuerpo, aletas, escamas, patrones y animación de nado |
+| Modos | Relax (sin algas, desgaste ni parámetros), Normal y Realista (márgenes estrictos, la habitación se enfría de noche, los peces pueden morir). Se cambia en Misiones |
+| Agua | Dulce o salada: cada una con sus peces, plantas/corales, sustratos y equipo. En salada la sal se concentra al evaporarse (reponer agua o instalar reposición automática). Se puede convertir la pecera |
+| Peces | 15 especies (9 de agua dulce, 6 marinas) con anatomía propia por shader: lomo y vientre, 7 tipos de cola, dorsal/anal con barrido, adiposa, barbillones, filamentos |
 | Genética | Colores, patrón y tamaño heredados; mutaciones Neón, Albino, Velo, Color raro, Patrón raro y Gigante; 5 rarezas |
 | Cuidados | Hambre, salud, felicidad, temperatura, pH, oxígeno y algas que aparecen poco a poco en el cristal y se limpian deslizando el dedo |
 | Equipo | 12 aparatos en 5 huecos (filtro, calentador, aireador, luz, termómetro). Cada uno se desgasta, rinde menos y avisa; se le hace mantenimiento tocándolo en la pecera |
@@ -69,7 +71,7 @@ godot --headless --resolution 720x1280 -s tests/smoke.gd -- demo=1
 ```
 
 Capturas para la tienda (necesita pantalla): `godot -- demo=2 open=shop:0 shot=captura.png`
-(`demo=0..3` elige la pecera; `open` = `shop:N`, `fish:N`, `missions`, `thermo`, `feed`, `clean`, `dirty`, `edit`, `equip:filter`, `decor`, `tutorial:N`, `algae:N`).
+(`demo=0..3` elige la pecera, `water=salada` y `mode=realista` opcionales; `open` = `shop:N`, `fish:N`, `missions`, `thermo`, `feed`, `clean`, `dirty`, `edit`, `equip:filter`, `decor`, `tutorial:N`, `algae:N`).
 
 ## Publicar en Google Play
 

@@ -43,7 +43,7 @@ func _ready() -> void:
 	refresh()
 	refresh_mode()
 	if not Game.started:
-		start_tutorial.call_deferred()
+		(start_tutorial if Game.stats.get("setup", false) else open_setup).call_deferred()
 
 
 func _glass(radius := 26) -> StyleBoxFlat:
@@ -82,8 +82,8 @@ func _build_top() -> void:
 	_pearls = _currency(row, "pearl", func(): open_missions())
 	v.add_child(row)
 
-	var chips := UI.hbox(10)
-	for c in [["temp", "thermo"], ["ph", "ph"], ["o2", "o2"], ["clean", "sparkle"]]:
+	var chips := UI.hbox(8)
+	for c in [["temp", "thermo"], ["ph", "ph"], ["sal", "ph"], ["o2", "o2"], ["clean", "sparkle"]]:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -95,7 +95,7 @@ func _build_top() -> void:
 		h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		h.alignment = BoxContainer.ALIGNMENT_CENTER
 		h.add_child(VIcon.make(c[1], 28))
-		var l := UI.label("—", 24, Color.WHITE, UI.bold)
+		var l := UI.label("—", 22, Color.WHITE, UI.bold)
 		h.add_child(l)
 		var dot := Dot.new()
 		dot.custom_minimum_size = Vector2(12, 12)
@@ -104,7 +104,7 @@ func _build_top() -> void:
 		b.add_child(h)
 		b.pressed.connect(_chip_tip.bind(c[0]))
 		chips.add_child(b)
-		_chips[c[0]] = [l, dot]
+		_chips[c[0]] = [l, dot, b]
 	v.add_child(chips)
 
 	_toasts = UI.vbox(8)
@@ -251,10 +251,12 @@ func refresh() -> void:
 	var w := Game.water()
 	var out_t := 0
 	var out_ph := 0
+	var out_sal := 0
 	for f in Game.fish:
-		var s: Dictionary = Catalog.SPECIES[f.genes.sp]
-		if Game.water_temp < s.temp[0] - 0.5 or Game.water_temp > s.temp[1] + 0.5: out_t += 1
-		if w.ph < s.ph[0] - 0.2 or w.ph > s.ph[1] + 0.2: out_ph += 1
+		var pr := Game.fish_problems(f)
+		out_t += int("Temperatura" in pr)
+		out_ph += int("pH" in pr)
+		out_sal += int("Salinidad" in pr)
 	var n := maxi(1, Game.fish.size())
 	var t_txt := Game.thermometer_text()
 	if t_txt == "":
@@ -265,6 +267,8 @@ func refresh() -> void:
 			show_toast("Alarma del termómetro: a algunos peces no les va esta temperatura", "thermo")
 		_temp_alarm = out_t > 0
 	_chip("ph", "pH %.1f" % w.ph, 0 if out_ph == 0 else (1 if out_ph * 2 < n else 2))
+	_chips.sal[2].visible = Game.water_kind == "salada"
+	_chip("sal", "%.3f" % Game.salinity, 0 if out_sal == 0 else (1 if out_sal * 2 < n else 2))
 	_chip("o2", "%d%%" % roundi(w.o2), 0 if w.o2 >= 70.0 else (1 if w.o2 >= 55.0 else 2))
 	_chip("clean", "%d%%" % roundi(100.0 - w.dirt), 0 if w.dirt < 40.0 else (1 if w.dirt < 70.0 else 2))
 	_mission_dot.visible = Game.has_claimable()
@@ -290,6 +294,8 @@ func _chip_tip(k: String) -> void:
 				show_toast("Agua a temperatura ambiente. Un calentador la mantiene estable.", "thermo")
 		"ph":
 			show_toast("pH %.1f. Las algas lo bajan y la raíz de manglar lo acidifica. Cada especie tiene su rango." % w.ph, "ph")
+		"sal":
+			open_salinity()
 		"o2":
 			show_toast("Oxígeno %d%%. Más peces consumen más; una bomba de aire o plantas ayudan." % roundi(w.o2), "o2")
 		"clean":
@@ -427,11 +433,95 @@ func start_tutorial() -> void:
 	_tutorial.tree_exited.connect(layer.queue_free)
 
 
+## Primera partida: elegir modo de juego y tipo de agua. Reinicia la escena con la pecera nueva.
+func open_setup() -> void:
+	var m := Modal.new(false)
+	m.centered(UI.title("¡Bienvenido a AquaCraft!", 40))
+	m.box.add_child(_center_label("¿Cómo quieres jugar? Podrás cambiarlo luego en Misiones.", 23))
+	var pick := {"mode": "normal", "water": "dulce"}
+	var mode_buttons := {}
+	var desc := _center_label(Catalog.MODES.normal.desc, 21)
+	for id in Catalog.MODE_ORDER:
+		var b := UI.button(Catalog.MODES[id].name)
+		b.custom_minimum_size.y = 64
+		mode_buttons[id] = b
+		m.box.add_child(b)
+	m.box.add_child(desc)
+	var water_row := UI.hbox(10)
+	var water_buttons := {}
+	for wid in ["dulce", "salada"]:
+		var b := UI.button(Catalog.WATER_NAMES[wid])
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		water_buttons[wid] = b
+		water_row.add_child(b)
+	m.box.add_child(water_row)
+	var paint := func():
+		for id in mode_buttons:
+			var on: bool = pick.mode == id
+			UI.button_colors(mode_buttons[id], UI.TEAL if on else Color("e7ddd0"), UI.TEAL_D if on else Color("cfc2ae"))
+			for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+				mode_buttons[id].add_theme_color_override(k, Color.WHITE if on else UI.NAVY)
+		for wid in water_buttons:
+			var on: bool = pick.water == wid
+			UI.button_colors(water_buttons[wid], UI.LAV if on else Color("e7ddd0"), UI.LAV_D if on else Color("cfc2ae"))
+			for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+				water_buttons[wid].add_theme_color_override(k, Color.WHITE if on else UI.NAVY)
+		desc.text = Catalog.MODES[pick.mode].desc
+	for id in mode_buttons:
+		mode_buttons[id].pressed.connect(func():
+			pick.mode = id
+			paint.call())
+	for wid in water_buttons:
+		water_buttons[wid].pressed.connect(func():
+			pick.water = wid
+			paint.call())
+	paint.call()
+	var go := UI.button("¡Empezar!", UI.CORAL, UI.CORAL_D)
+	go.custom_minimum_size.y = 72
+	go.pressed.connect(func():
+		Game.new_game(pick.mode, pick.water)
+		Game.stats.setup = true
+		Game.save_game()
+		get_tree().reload_current_scene())
+	m.box.add_child(go)
+	_show_modal(m)
+
+
+func open_mode_picker() -> void:
+	var m := Modal.new()
+	m.centered(UI.title("Modo de juego", 38))
+	for id in Catalog.MODE_ORDER:
+		var b := UI.button(Catalog.MODES[id].name + ("  (actual)" if id == Game.mode else ""), UI.TEAL if id == Game.mode else UI.LAV, UI.TEAL_D if id == Game.mode else UI.LAV_D)
+		b.custom_minimum_size.y = 64
+		b.pressed.connect(func():
+			Game.set_game_mode(id)
+			m.close())
+		m.box.add_child(b)
+		m.box.add_child(_center_label(Catalog.MODES[id].desc, 20))
+	_show_modal(m)
+
+
+## Salinidad (agua salada): se concentra al evaporarse el agua; se corrige reponiendo agua dulce.
+func open_salinity() -> void:
+	var m := Modal.new()
+	m.centered(VIcon.make("ph", 64))
+	m.centered(UI.title("Salinidad %.3f" % Game.salinity, 38))
+	m.box.add_child(_center_label("Ideal: %.3f – %.3f. El agua se evapora y la sal se concentra; repón con agua dulce (nunca salada)." % [Catalog.SALINITY[0], Catalog.SALINITY[1]], 22))
+	if float(Game.mk("evap")) <= 0.0:
+		m.box.add_child(_center_label("En modo Relax la salinidad se mantiene sola.", 21, UI.MUTED))
+	elif Game.equipment.ato != "":
+		m.box.add_child(_center_label("Tu reposición automática se encarga (si tiene el depósito lleno).", 21, UI.MUTED))
+	m.box.add_child(_hold_button("Mantén pulsado: reponer agua dulce", func():
+		Game.top_up()
+		m.close()))
+	_show_modal(m)
+
+
 ## Ficha de un aparato: estado, efecto y mantenimiento (mantener pulsado).
 func open_equipment(slot: String) -> void:
 	var id: String = Game.equipment.get(slot, "")
 	var m := Modal.new()
-	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star", "thermo": "thermo"}
+	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star", "thermo": "thermo", "ato": "ph"}
 	m.centered(VIcon.make(icons[slot], 64))
 	if id == "":
 		m.centered(UI.title(Catalog.SLOT_NAMES[slot], 38))

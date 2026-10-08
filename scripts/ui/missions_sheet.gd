@@ -48,6 +48,16 @@ func _build() -> void:
 	var bl := UI.label("Completa las 3 diarias: +3 perlas" + (" (cobrado)" if Game.daily.get("bonus", false) else ""), 22, UI.LAV_D, UI.bold)
 	bonus.add_child(bl)
 	v.add_child(bonus)
+	var mode_row := UI.hbox(10)
+	var ml := UI.label("Modo: %s · %s" % [Catalog.MODES[Game.mode].name, Catalog.WATER_NAMES[Game.water_kind]], 22, UI.NAVY, UI.bold)
+	ml.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mode_row.add_child(ml)
+	var change := UI.button("Cambiar modo", UI.LAV, UI.LAV_D)
+	change.pressed.connect(func():
+		close()
+		get_parent().open_mode_picker())
+	mode_row.add_child(change)
+	v.add_child(mode_row)
 	var tut := UI.button("Repetir el tutorial", UI.SAND, Color("e2d3bd"))
 	tut.add_theme_color_override("font_color", UI.NAVY)
 	tut.pressed.connect(func():

@@ -100,6 +100,42 @@ func _init() -> void:
 	game.equipment.thermo = ""
 	check(game.thermometer_text() == "", "sin termómetro no hay temperatura")
 	check(game.daily.missions.size() == 3, "3 misiones diarias")
+
+	# Agua salada: peces marinos, la sal se concentra al evaporarse y se corrige reponiendo.
+	game.new_game("normal", "salada")
+	game._refresh_water()
+	check(game.fish.all(func(f): return Catalog.SPECIES[f.genes.sp].water == "salada"), "partida marina con peces marinos")
+	check(game.substrate == "aragonita" and game.water().ph > 7.9, "sustrato y pH marinos")
+	game._evaporate(12 * 3600.0)
+	check(game.fish_problems(game.fish[0]).has("Salinidad"), "la evaporación sube la salinidad (%.4f)" % game.salinity)
+	game.top_up()
+	check(not game.fish_problems(game.fish[0]).has("Salinidad"), "reponer agua corrige la salinidad")
+	game.buy_fish("guppy")
+	check(not game.fish.any(func(f): return f.genes.sp == "guppy"), "no se venden peces de agua dulce en un marino")
+	check(not game.convert_water(), "no se convierte con peces dentro")
+	game.fish.clear()
+	game.coins = 1000
+	check(game.convert_water() and game.water_kind == "dulce", "convertir a agua dulce")
+	check(game.decor_inv.has("anemona") and game.substrate == "grava", "lo marino se guarda al convertir")
+
+	# Modo Relax: ni algas ni desgaste ni parámetros.
+	game.new_game("basico", "dulce")
+	game._refresh_water()
+	game._grow_algae(10 * 3600.0)
+	game._wear(10 * 3600.0)
+	game._refresh_water()
+	check(game.water().dirt == 0.0 and game.needs_maintenance().is_empty(), "Relax: sin algas ni mantenimiento")
+	game.water_temp = 35.0
+	check(game.fish_problems(game.fish[0]).is_empty(), "Relax: la temperatura no molesta")
+
+	# Modo Realista: un pez descuidado puede morir.
+	game.new_game("realista", "dulce")
+	game._refresh_water()
+	var victim: Dictionary = game.fish[0]
+	victim.health = 1.0
+	victim.hunger = 100.0
+	game._sim(600.0, Time.get_unix_time_from_system())
+	check(not game.fish.has(victim), "Realista: un pez sin cuidados muere")
 	game.free()
 
 	print("TESTS: %s" % ("OK" if fails == 0 else "%d FALLOS" % fails))

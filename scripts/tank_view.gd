@@ -141,6 +141,11 @@ func rebuild() -> void:
 	sm.set_shader_parameter("col_c", Catalog.color(sub.cols[2]))
 	sm.set_shader_parameter("pebble", sub.pebble)
 	sm.set_shader_parameter("seed", _sub_seed)
+	# El agua salada es más azul y transparente.
+	var marine := Game.water_kind == "salada"
+	_water.material.set_shader_parameter("top_col", Color(0.5, 0.88, 1.0) if marine else Color(0.42, 0.88, 0.9))
+	_water.material.set_shader_parameter("deep_col", Color(0.02, 0.17, 0.42) if marine else Color(0.02, 0.24, 0.38))
+	sm.set_shader_parameter("fog_col", Color(0.04, 0.22, 0.45) if marine else Color(0.04, 0.3, 0.42))
 	_build_decor()
 	_build_pump()
 	_equip.queue_redraw()
@@ -324,7 +329,7 @@ func decor_rect(i: int) -> Rect2:
 
 ## Aparato bajo el dedo ("" si ninguno). Incluye la tapa (luz) por encima del agua.
 func equipment_at(p: Vector2) -> String:
-	for slot in ["thermo", "filter", "heater", "pump", "light"]:
+	for slot in ["thermo", "ato", "filter", "heater", "pump", "light"]:
 		if equip_rects.has(slot) and (equip_rects[slot] as Rect2).grow(10.0).has_point(p):
 			return slot
 	return ""
@@ -410,6 +415,14 @@ func _draw_equipment() -> void:
 			ci.draw_rect(Rect2(r.position.x + 8, 52 * u, 54 * u, 10 * u), Color(0.85, 0.95, 1.0, 0.4 * (1.0 - dirty)))
 			ci.draw_rect(Rect2(r.position.x + 22 * u, 58 * u, 18 * u, size.y * 0.5), Color(0.2, 0.22, 0.24).lerp(grime, dirty))
 			equip_rects["filter"] = Rect2(r.position, Vector2(r.size.x, 58 * u + size.y * 0.5))
+		"skimmer":
+			var r := Rect2(size.x * 0.84, size.y * 0.08, 46 * u, size.y * 0.5)
+			ci.draw_rect(r, Color(0.85, 0.92, 0.98, 0.35))
+			ci.draw_rect(Rect2(r.position + Vector2(6, 6) * u, Vector2(34 * u, r.size.y * 0.2)), Color(0.55, 0.45, 0.25, 0.3 + 0.6 * dirty))
+			for k in 8:
+				ci.draw_circle(r.position + Vector2(12 + (k % 3) * 10, r.size.y * (0.35 + k * 0.07)) * Vector2(u, 1), 3.0 * u, Color(1, 1, 1, 0.55))
+			ci.draw_rect(Rect2(r.position.x - 4, r.end.y, r.size.x + 8, 14 * u), Color(0.15, 0.17, 0.2))
+			equip_rects["filter"] = r
 		"canister":
 			var x := size.x * 0.9
 			var pipe := Color(0.6, 0.9, 0.75, 0.45).lerp(Color(0.45, 0.45, 0.2, 0.7), dirty)
@@ -417,6 +430,11 @@ func _draw_equipment() -> void:
 			ci.draw_rect(Rect2(x - 8 * u, size.y * 0.7, 16 * u, 40 * u), pipe)
 			ci.draw_line(Vector2(size.x * 0.12, 0), Vector2(size.x * 0.12, size.y * 0.12), pipe, 9 * u, true)
 			equip_rects["filter"] = Rect2(x - 14 * u, 0, 28 * u, size.y * 0.7 + 40 * u)
+	if e.ato != "":
+		var p := Vector2(size.x * 0.6, size.y * 0.035)
+		ci.draw_rect(Rect2(p, Vector2(26 * u, 12 * u)), Color(0.15, 0.17, 0.2))
+		ci.draw_line(p + Vector2(13 * u, 12 * u), p + Vector2(13 * u, 34 * u), Color(0.85, 0.95, 1.0, 0.5), 3.0 * u, true)
+		equip_rects["ato"] = Rect2(p - Vector2(8, 8), Vector2(42 * u, 48 * u))
 	match e.thermo:
 		"tira": equip_rects["thermo"] = Rect2(size.x - 40 * u, size.y * 0.1, 20 * u, size.y * 0.24)
 		"digital": equip_rects["thermo"] = Rect2(size.x - 104 * u, size.y * 0.07, 86 * u, 40 * u)

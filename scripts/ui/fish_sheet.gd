@@ -134,8 +134,12 @@ func _show_detail(id: int) -> void:
 		sv.add_child(h)
 	if f.grow < 1.0:
 		sv.add_child(UI.label("Creciendo: %d%%  (los gránulos aceleran)" % int(f.grow * 100.0), 21, UI.MUTED, UI.bold))
-	if int(f.get("problems", 0)) > 0:
-		sv.add_child(UI.wrap(UI.label("Algo le molesta: revisa temperatura, pH, oxígeno, limpieza o hambre.", 21, UI.BAD, UI.bold)))
+	var probs := Game.fish_problems(f)
+	if not probs.is_empty():
+		sv.add_child(UI.wrap(UI.label("Le molesta: %s" % ", ".join(probs).to_lower(), 21, UI.BAD, UI.bold)))
+	var s: Dictionary = Catalog.SPECIES[f.genes.sp]
+	sv.add_child(UI.wrap(UI.label("Le gusta: %d–%d °C · pH %.1f–%.1f%s" % [s.temp[0], s.temp[1], s.ph[0], s.ph[1],
+		" · salinidad %.3f–%.3f" % Catalog.SALINITY if s.water == "salada" else ""], 20, UI.MUTED, UI.bold)))
 	stats.add_child(sv)
 	v.add_child(stats)
 
