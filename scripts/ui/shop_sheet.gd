@@ -151,23 +151,30 @@ func _tank_tab() -> void:
 
 func _equip_tab() -> void:
 	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star", "thermo": "thermo", "ato": "ph"}
+	var t: Dictionary = Catalog.TANKS[Game.tank_tier]
+	var note := UI.wrap(UI.label("Tu %s admite equipo %s. Lo básico es barato pero se gasta antes, rinde menos y se rompe si lo descuidas." % [
+		t.name, "solo básico" if t.max_q == 1 else ("hasta estándar" if t.max_q == 2 else "de cualquier calidad")], 21, UI.MUTED, UI.bold))
+	_list.add_child(note)
 	for slot in (["filter", "heater", "pump", "light", "thermo", "ato"] if Game.water_kind == "salada" else ["filter", "heater", "pump", "light", "thermo"]):
-		_section(Catalog.SLOT_NAMES[slot], "uno a la vez")
+		_section(Catalog.SLOT_NAMES[slot], "uno a la vez" if slot in t.equip else "no cabe en esta pecera")
 		var g := _grid()
 		for id in Catalog.EQUIPMENT_ORDER:
 			var e: Dictionary = Catalog.EQUIPMENT[id]
 			if e.slot != slot or not Catalog.fits(e, Game.water_kind):
 				continue
 			var cur: String = Game.equipment[slot]
+			var why := Game.install_block(id)
 			var act: Control
 			if cur == id:
 				act = _state("Instalado · %d%%" % roundi(Game.condition(slot)) if e.wear > 0.0 else "Instalado")
-			elif cur != "" and Catalog.EQUIPMENT_ORDER.find(cur) > Catalog.EQUIPMENT_ORDER.find(id):
+			elif why != "":
+				act = _state(why)
+			elif cur != "" and int(Catalog.EQUIPMENT[cur].q) > int(e.q):
 				act = _state("Tienes uno mejor")
 			else:
 				act = _price(e.price, "coins", e.level, Game.buy_equipment.bind(id))
 			var desc: String = e.desc + ("\nMantenimiento: %s" % e.maint.to_lower() if e.wear > 0.0 else "")
-			_card(g, Previews.icon(icons[slot]), e.name, desc, act)
+			_card(g, Previews.icon(icons[slot]), e.name, desc, act, UI.pill(Catalog.QUALITY_NAMES[e.q], Catalog.color(Catalog.QUALITY_COLORS[e.q])))
 
 
 func _decor_tab() -> void:

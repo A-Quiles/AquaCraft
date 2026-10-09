@@ -12,6 +12,9 @@ var _bar := {}                       ## clave → Button
 var _mission_dot: Control
 var _hint: PanelContainer
 var _hint_label: Label
+var _edit_row: HBoxContainer          ## Decorar: mover objetos / moldear arena
+var _sculpt_btn: Button
+var _flat_btn: Button
 var _sheet: Control
 var _modal: Modal
 var _temp_alarm := false
@@ -150,6 +153,7 @@ func _build_bottom() -> void:
 	_hint = PanelContainer.new()
 	_hint.add_theme_stylebox_override("panel", _glass())
 	_hint.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var hv := UI.vbox(10)
 	var hh := UI.hbox(12)
 	_hint_label = UI.wrap(UI.label("", 21, Color.WHITE, UI.bold))
 	_hint_label.custom_minimum_size.x = 430
@@ -158,7 +162,20 @@ func _build_bottom() -> void:
 	done.add_theme_font_size_override("font_size", 21)
 	done.pressed.connect(func(): main.set_mode(main.mode))
 	hh.add_child(done)
-	_hint.add_child(hh)
+	hv.add_child(hh)
+	_edit_row = UI.hbox(10)
+	_sculpt_btn = UI.button("", UI.LAV, UI.LAV_D)
+	_sculpt_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sculpt_btn.add_theme_font_size_override("font_size", 21)
+	_sculpt_btn.pressed.connect(func(): main.set_sculpt(not main.sculpt))
+	_edit_row.add_child(_sculpt_btn)
+	_flat_btn = UI.button("Allanar", UI.SAND, Color("e2d3bd"))
+	_flat_btn.add_theme_color_override("font_color", UI.NAVY)
+	_flat_btn.add_theme_font_size_override("font_size", 21)
+	_flat_btn.pressed.connect(func(): main.flatten_terrain())
+	_edit_row.add_child(_flat_btn)
+	hv.add_child(_edit_row)
+	_hint.add_child(hv)
 	v.add_child(_hint)
 
 	var bar := UI.hbox(8)
@@ -215,7 +232,11 @@ func refresh_mode() -> void:
 	_hint.visible = main.mode != main.Mode.NORMAL
 	_hint_label.text = {main.Mode.FEED: "Toca el agua para echar %s" % Catalog.FOODS[main.food_type].name.to_lower(),
 		main.Mode.CLEAN: "Frota el cristal con el limpiador para quitar las algas",
-		main.Mode.EDIT: "Arrastra plantas, adornos o aparatos · tócalos para más opciones"}.get(main.mode, "")
+		main.Mode.EDIT: "Desliza hacia arriba para amontonar arena y hacia abajo para quitarla" if main.sculpt
+			else "Arrastra plantas, adornos o aparatos · tócalos para más opciones"}.get(main.mode, "")
+	_edit_row.visible = main.mode == main.Mode.EDIT
+	_sculpt_btn.text = "Mover objetos" if main.sculpt else "Moldear la arena"
+	_flat_btn.visible = main.sculpt
 
 
 func refresh() -> void:
@@ -534,11 +555,17 @@ func open_equipment(slot: String) -> void:
 	m.centered(VIcon.make(icons[slot], 64))
 	if id == "":
 		m.centered(UI.title(Catalog.SLOT_NAMES[slot], 38))
-		m.box.add_child(_center_label("Llevas la luz básica de serie. Una pantalla LED da más color y felicidad.", 24))
+		var why := "Llevas la luz básica de serie. Una pantalla LED da más color y felicidad." if slot == "light" else "No tienes ninguno instalado."
+		if not slot in Catalog.TANKS[Game.tank_tier].equip:
+			why = "Tu pecera no admite este aparato: amplíala en la tienda."
+		m.box.add_child(_center_label(why, 24))
 	else:
 		var e: Dictionary = Catalog.EQUIPMENT[id]
 		m.centered(UI.title(e.name, 36))
+		m.centered(UI.pill(Catalog.QUALITY_NAMES[e.q], Catalog.color(Catalog.QUALITY_COLORS[e.q])))
 		m.box.add_child(_center_label(e.desc, 23))
+		if int(e.q) == 1 and e.wear > 0.0:
+			m.box.add_child(_center_label("Es básico: si llega al 0% se rompe y tendrás que comprar otro.", 21, UI.MUTED))
 		if e.wear > 0.0:
 			var cond := Game.condition(slot)
 			var row := UI.hbox(12)

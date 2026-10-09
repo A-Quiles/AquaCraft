@@ -12,7 +12,7 @@ signal algae_changed
 signal level_up(level: int)
 
 var save_path := "user://save.json"   ## demo usa otro fichero para no pisar la partida
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2              ## 2: se añadió la pecera redonda al principio (tier +1)
 const GW := 40                       ## rejilla de algas del cristal
 const GH := 60
 const ROOM_TEMP := 23.0
@@ -37,6 +37,7 @@ var substrate := "grava"
 var owned_substrates: Array = ["grava"]
 var decor: Array = []                ## colocadas: {id, x (0..1), layer (0 fondo, 1 medio, 2 delante), flip}
 var decor_inv := {}                  ## guardadas: id → cantidad
+var terrain: Array = []              ## alturas del sustrato (Catalog.TERRAIN_N valores, fracción del alto)
 var food := {"granulos": 5, "artemia": 3}
 var products := {"ph_up": 1, "ph_down": 1, "antialgas": 1}
 var ph_adjust := 0.0                 ## efecto de los reguladores de pH (se disipa con el tiempo)
@@ -54,6 +55,8 @@ var started := false                 ## false hasta terminar o saltar el tutoria
 
 var rng := RandomNumberGenerator.new()
 var _weights := PackedFloat32Array()
+var _weights_round := PackedFloat32Array()   ## igual, pero a 0 fuera del cristal de la pecera redonda
+var _round_cells := 1
 var _acc := 0.0
 var _dirty := false
 var _save_acc := 0.0
@@ -85,25 +88,30 @@ func _arg(key: String) -> String:
 func _demo(tier: int) -> void:
 	var marine := _arg("water") == "salada"
 	new_game(_arg("mode") if _arg("mode") != "" else "normal", "salada" if marine else "dulce")
-	tank_tier = clampi(tier, 0, 3)
-	level = [3, 5, 7, 10][tank_tier]
+	tank_tier = clampi(tier, 0, 4)
+	level = [2, 3, 5, 7, 10][tank_tier]
 	coins = 4820
 	pearls = 37
 	xp = int(xp_need(level) * 0.6)
 	equipment = {"filter": "canister", "heater": "calentador", "pump": "bomba", "light": "led_pro", "thermo": "digital", "ato": ""}
+	if tank_tier == 1:
+		equipment.filter = "mochila"
+	if tank_tier == 0:
+		equipment = {"filter": "esponja", "heater": "calentador_mini", "pump": "", "light": "", "thermo": "tira", "ato": ""}
 	for k in equipment:
 		equip_cond[k] = 90.0
 	heater_target = 26.0
 	water_temp = 26.0
-	substrate = ["arena", "grava", "arena", "negra"][tank_tier]
-	var ids: Array = [["vallisneria", "cofre", "rocas"], ["vallisneria", "rotala", "castillo", "helecho", "rocas"],
+	substrate = ["pastel", "arena", "grava", "arena", "negra"][tank_tier]
+	var ids: Array = [["vallisneria", "rocas"], ["vallisneria", "cofre", "rocas"], ["vallisneria", "rotala", "castillo", "helecho", "rocas"],
 		["vallisneria", "rotala", "barco", "anubias", "cofre", "musgo", "helecho"],
 		["vallisneria", "rotala", "barco", "anubias", "coral", "helecho", "tronco", "castillo", "musgo"]][tank_tier]
 	if marine:
 		substrate = "aragonita"
-		equipment.filter = "skimmer"
-		equipment.ato = "ato"
-		ids = [["roca_viva", "anemona", "caulerpa"], ["caulerpa", "roca_viva", "anemona", "coral_cerebro", "coral_blando"],
+		if tank_tier > 0:
+			equipment.filter = "skimmer"
+			equipment.ato = "ato"
+		ids = [["roca_viva", "anemona"], ["roca_viva", "anemona", "caulerpa"], ["caulerpa", "roca_viva", "anemona", "coral_cerebro", "coral_blando"],
 			["caulerpa", "coral_blando", "roca_viva", "anemona", "coral_cerebro", "cofre", "coral"],
 			["caulerpa", "coral_blando", "barco", "roca_viva", "anemona", "coral_cerebro", "coral", "roca_viva", "coral_blando"]][tank_tier]
 	decor = []
@@ -111,7 +119,7 @@ func _demo(tier: int) -> void:
 		decor.append(_decor_entry(ids[i], 0.12 + 0.76 * i / maxf(1.0, ids.size() - 1.0)))
 	fish = []
 	var r := RandomNumberGenerator.new()
-	r.seed = 11 + tier
+	r.seed = 10 + tier
 	var pool := [["guppy", 0], ["guppy", 1], ["neon", 0], ["neon", 0], ["betta", 1], ["goldfish", 0],
 		["rainbow", 0], ["angelfish", 0], ["discus", 1], ["molly", 0], ["corydoras", 0], ["discus", 0],
 		["rainbow", 1], ["betta", 2], ["goldfish", 1], ["angelfish", 1]]
@@ -119,11 +127,12 @@ func _demo(tier: int) -> void:
 		pool = [["payaso", 0], ["payaso", 0], ["gramma", 0], ["cirujano_azul", 0], ["gobio_fuego", 0], ["cirujano_amarillo", 0],
 			["angel_llama", 0], ["payaso", 1], ["gramma", 1], ["cirujano_azul", 1], ["gobio_fuego", 0], ["angel_llama", 1],
 			["cirujano_amarillo", 0], ["payaso", 2], ["gramma", 0], ["cirujano_azul", 0]]
-	for i in [5, 9, 14, 16][tank_tier]:
+	for i in [3, 5, 9, 14, 16][tank_tier]:
 		var f := _add_fish(Genetics.random_genes(pool[i][0], r, pool[i][1]), 1.0, i % 3 == 0)
 		f.hunger = 20.0 if i != 2 else 75.0
+	var wts := algae_weights()
 	for i in algae.size():
-		algae[i] = int(_weights[i] * 10.0)
+		algae[i] = int(wts[i] * 10.0)
 	daily = {}
 	_check_daily()
 	started = true
@@ -169,11 +178,11 @@ func new_game(game_mode := "normal", water_type := "dulce") -> void:
 	xp = 0
 	tank_tier = 0
 	var marine := water_kind == "salada"
-	# Kit de inicio: filtro de esponja algo sucio (el tutorial enseña a limpiarlo) y termómetro adhesivo.
-	# El marino necesita calor sí o sí: trae un calentador fijo.
-	equipment = {"filter": "esponja", "heater": "calentador_fijo" if marine else "", "pump": "", "light": "", "thermo": "tira", "ato": ""}
-	equip_cond = {"filter": 45.0 if mode != "basico" else 100.0, "thermo": 100.0, "heater": 100.0}
+	# Se empieza con una pecera redonda y sin ningún aparato: hay que ir comprándolos.
+	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
+	equip_cond = {}
 	equip_pos = {}
+	terrain = []
 	substrate = "aragonita" if marine else "grava"
 	owned_substrates = [substrate]
 	decor = [_decor_entry("roca_viva", 0.25), _decor_entry("anemona", 0.7)] if marine \
@@ -191,8 +200,9 @@ func new_game(game_mode := "normal", water_type := "dulce") -> void:
 	started = false
 	algae = PackedByteArray()
 	algae.resize(GW * GH)
+	var wts := algae_weights()
 	for i in algae.size():
-		algae[i] = int(clampf(_weights[i] * 55.0 * float(mk("algae") > 0.0), 0.0, 255.0))
+		algae[i] = int(clampf(wts[i] * 55.0 * float(mk("algae") > 0.0), 0.0, 255.0))
 	water_temp = _temp_target()
 	for sp in (["payaso", "payaso", "gramma"] if marine else ["guppy", "guppy", "neon"]):
 		_add_fish(Genetics.random_genes(sp, rng), 1.0, false)
@@ -270,7 +280,7 @@ func save_game() -> void:
 		"v": SAVE_VERSION, "mode": mode, "water": water_kind, "salinity": salinity, "coins": coins, "pearls": pearls, "level": level, "xp": xp,
 		"tank_tier": tank_tier, "equipment": equipment, "equip_cond": equip_cond, "equip_pos": equip_pos, "heater_target": heater_target,
 		"water_temp": water_temp, "substrate": substrate, "owned_substrates": owned_substrates,
-		"decor": decor, "decor_inv": decor_inv, "food": food, "products": products, "ph_adjust": ph_adjust,
+		"decor": decor, "decor_inv": decor_inv, "terrain": terrain, "food": food, "products": products, "ph_adjust": ph_adjust,
 		"algae_block_until": algae_block_until, "fish": fish, "eggs": eggs,
 		"algae": Marshalls.raw_to_base64(algae), "stats": stats, "discovered": discovered,
 		"daily": daily, "story_idx": story_idx, "next_id": next_id, "last_sim": last_sim,
@@ -308,6 +318,9 @@ func load_game() -> bool:
 	level = int(d.level)
 	xp = int(d.xp)
 	tank_tier = int(d.tank_tier)
+	if int(d.get("v", 1)) < 2:
+		tank_tier += 1                     # la pecera redonda se añadió delante de la Nano
+	terrain = d.get("terrain", [])
 	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
 	equipment.merge(d.equipment, true)
 	equip_cond = d.get("equip_cond", {})
@@ -402,7 +415,7 @@ func _sim(dt: float, now: float) -> void:
 	var m := dt / 60.0
 	if not _offline_floor:
 		_refresh_water()
-	water_temp = move_toward(water_temp, _temp_target(), 0.6 * m)
+	water_temp = move_toward(water_temp, _temp_target(), heat_rate() * m)
 	ph_adjust = move_toward(ph_adjust, 0.0, 0.3 / 1440.0 * m)  # se disipa en ~1 día
 	_wear(dt)
 	var w: Dictionary = _cache
@@ -483,8 +496,9 @@ func _grow_algae(dt: float) -> void:
 	var add := per_min * dt / 60.0 * 2.55          # bytes por celda (peso medio 1)
 	if add <= 0.0:
 		return
+	var wts := algae_weights()
 	for i in algae.size():
-		var v := add * _weights[i]
+		var v := add * wts[i]
 		# Redondeo estocástico para que el crecimiento lento no se pierda.
 		var n := int(v) + (1 if rng.randf() < v - floorf(v) else 0)
 		algae[i] = mini(255, algae[i] + n)
@@ -503,6 +517,31 @@ func _build_weights() -> void:
 			var n := noise.get_noise_2d(x, y) * 0.5 + 0.5
 			# Mucha varianza: unas manchas aparecen pronto y se van extendiendo.
 			_weights[y * GW + x] = clampf(0.1 + pow(n, 2.2) * 2.6 + edge * 0.5 + bottom * 0.3, 0.08, 2.6)
+	# Pecera redonda: solo hay cristal dentro del círculo (mismas proporciones que TankView.bowl()).
+	_weights_round = _weights.duplicate()
+	_round_cells = 0
+	for y in GH:
+		for x in GW:
+			var u := (x + 0.5) / GW
+			var v := (y + 0.5) / GH
+			if pow((u - 0.5) / 0.5, 2.0) + pow((v - BOWL_CY) / BOWL_RY, 2.0) > 1.0:
+				_weights_round[y * GW + x] = 0.0
+			else:
+				_round_cells += 1
+
+
+## Proporciones de la pecera redonda (alto = 0,92 × ancho): centro y radio vertical en uv.
+const BOWL_H := 0.92
+const BOWL_CY := (BOWL_H - 0.5) / BOWL_H
+const BOWL_RY := 0.5 / BOWL_H
+
+
+func is_round() -> bool:
+	return Catalog.TANKS[tank_tier].get("round", false)
+
+
+func algae_weights() -> PackedFloat32Array:
+	return _weights_round if is_round() else _weights
 
 
 ## Recalcula los parámetros del agua (pH, O₂, suciedad...) a partir del estado.
@@ -510,7 +549,7 @@ func _refresh_water() -> void:
 	var total := 0
 	for b in algae:
 		total += b
-	var dirt := float(total) / maxf(1.0, algae.size() * 2.55)
+	var dirt := float(total) / maxf(1.0, (_round_cells if is_round() else algae.size()) * 2.55)
 	var tank: Dictionary = Catalog.TANKS[tank_tier]
 	var plants := 0
 	var decor_happy := 0.0
@@ -561,6 +600,24 @@ func efficiency(slot: String) -> float:
 	return clampf(float(equip_cond.get(slot, 100.0)) / 60.0, 0.15, 1.0)
 
 
+## °C por minuto hacia la temperatura objetivo: sin calentador el agua se templa sola, despacio.
+func heat_rate() -> float:
+	if equipment.heater == "":
+		return 0.15
+	return float(Catalog.EQUIPMENT[equipment.heater].get("rate", 0.6)) * lerpf(0.4, 1.0, efficiency("heater"))
+
+
+## "" si se puede instalar en la pecera actual; si no, el motivo.
+func install_block(id: String) -> String:
+	var e: Dictionary = Catalog.EQUIPMENT[id]
+	var t: Dictionary = Catalog.TANKS[tank_tier]
+	if not e.slot in t.equip:
+		return "No cabe aquí"
+	if int(e.q) > int(t.max_q):
+		return "Pecera mayor"
+	return ""
+
+
 func condition(slot: String) -> float:
 	return float(equip_cond.get(slot, 100.0))
 
@@ -584,6 +641,13 @@ func _wear(dt: float) -> void:
 		equip_cond[slot] = maxf(0.0, before - rate * dt / 3600.0)
 		if before >= 30.0 and equip_cond[slot] < 30.0 and not _offline_floor:
 			toast.emit("%s necesita mantenimiento" % Catalog.EQUIPMENT[id].name, "gear")
+		# Los aparatos básicos no aguantan el abandono: al llegar a 0 se rompen y hay que comprar otro.
+		if equip_cond[slot] <= 0.0 and int(Catalog.EQUIPMENT[id].q) == 1:
+			equipment[slot] = ""
+			equip_cond.erase(slot)
+			_bump("broken", 1)
+			toast.emit.call_deferred("Se ha roto tu %s. Compra otro en la tienda" % Catalog.EQUIPMENT[id].name.to_lower(), "gear")
+			tank_changed.emit.call_deferred()
 
 
 ## Equipos por debajo del 30%: para avisos en la pecera.
@@ -846,8 +910,9 @@ func fish_ate(id: int, food_id: String) -> void:
 
 ## Comida que nadie se comió: ensucia un poco.
 func food_rotted() -> void:
+	var wts := algae_weights()
 	for i in algae.size():
-		algae[i] = mini(255, algae[i] + int(1.6 * _weights[i]))
+		algae[i] = mini(255, algae[i] + int(1.6 * wts[i]))
 	algae_changed.emit()
 
 
@@ -982,6 +1047,9 @@ func buy_tank(tier: int) -> void:
 func buy_equipment(id: String) -> void:
 	var e: Dictionary = Catalog.EQUIPMENT[id]
 	if not Catalog.fits(e, water_kind):
+		return
+	if install_block(id) != "":
+		toast.emit("%s no cabe en tu %s: amplía la pecera" % [e.name, Catalog.TANKS[tank_tier].name], "tank")
 		return
 	if equipment[e.slot] == id or not spend(e.price, "coins"):
 		return

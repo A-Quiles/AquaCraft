@@ -11,7 +11,8 @@ const CAUSTICS := preload("res://assets/textures/caustics.png")
 const NOISE := preload("res://assets/textures/noise.png")
 const BUBBLE := preload("res://assets/textures/bubble.png")
 const DOT := preload("res://assets/textures/dot.png")
-const SUB_TOP := 0.8                 ## el rect del sustrato empieza al 80% de la altura
+const SUB_TOP := 0.8                 ## la superficie del sustrato (sin moldear) está hacia el 80% de la altura
+const SUB_RECT := 0.5                ## el rect del sustrato empieza más arriba para que quepan las montañas
 
 var size := Vector2(520, 460)
 var actors := {}                     ## id → FishActor
@@ -81,7 +82,8 @@ func _ready() -> void:
 	add_child(overlay)
 	_glass = _rect(GLASS)
 	_glass.z_index = 50
-	_top = _node()
+	_top = Node2D.new()
+	add_child(_top)
 	_top.z_index = 55
 	_top.draw.connect(_draw_top)
 	_algae_img = Image.create_from_data(Game.GW, Game.GH, false, Image.FORMAT_L8, Game.algae)
@@ -114,22 +116,42 @@ func _node() -> Node2D:
 	return n
 
 
+## Pecera redonda: centro (position) y radio (size.x) en coordenadas locales.
+func bowl() -> Rect2:
+	return Rect2(Vector2(size.x * 0.5, size.y - size.x * 0.5), Vector2(size.x * 0.5, 0.0))
+
+
+## Mantiene un punto (con medio tamaño `half`) dentro del agua: sobre la arena moldeada y,
+## en la pecera redonda, dentro del cristal.
+func fit(p: Vector2, half: Vector2) -> Vector2:
+	p.y = minf(p.y, surface_y(p.x) - half.y * 0.9)
+	if Game.is_round():
+		var b := bowl()
+		var maxr := b.size.x - maxf(half.x, half.y) - 6.0
+		var v := p - b.position
+		if v.length() > maxr:
+			p = b.position + v.normalized() * maxr
+	return p
+
+
 ## Coloca la pecera en `rect` (coordenadas del padre) y lo reconstruye todo.
 func layout(rect: Rect2) -> void:
 	position = rect.position
 	size = rect.size
 	_water.size = size
 	_glass.size = size
-	_sub.position = Vector2(0, size.y * SUB_TOP)
-	_sub.size = Vector2(size.x, size.y * (1.0 - SUB_TOP))
+	_sub.position = Vector2(0, size.y * SUB_RECT)
+	_sub.size = Vector2(size.x, size.y * (1.0 - SUB_RECT))
 	_water.material.set_shader_parameter("size", size)
 	_glass.material.set_shader_parameter("size", size)
 	_sub.material.set_shader_parameter("size", _sub.size)
+	_sub.material.set_shader_parameter("tank", size)
+	_sub.material.set_shader_parameter("rect_top", size.y * SUB_RECT)
 	_motes.emission_rect_extents = size * 0.5
 	_motes.position = size * 0.5
 	rebuild()
 	for a in actors.values():
-		a.position = a.position.clamp(swim_rect(a.data.genes).position, swim_rect(a.data.genes).end)
+		a.position = fit(a.position.clamp(swim_rect(a.data.genes).position, swim_rect(a.data.genes).end), a.size_px() * 0.5)
 		a.target = a.position
 
 
@@ -142,6 +164,7 @@ func rebuild() -> void:
 	sm.set_shader_parameter("col_c", Catalog.color(sub.cols[2]))
 	sm.set_shader_parameter("pebble", sub.pebble)
 	sm.set_shader_parameter("seed", _sub_seed)
+	sm.set_shader_parameter("terrain", _terrain_arr())
 	# El agua salada es más azul y transparente.
 	var marine := Game.water_kind == "salada"
 	_water.material.set_shader_parameter("top_col", Color(0.5, 0.88, 1.0) if marine else Color(0.42, 0.88, 0.9))
@@ -188,7 +211,41 @@ func surface_y(x: float) -> float:
 	var sh := size.y * (1.0 - SUB_TOP)
 	var xa := x / sh
 	var e := 0.3 + 0.08 * sin(xa * 1.9 + _sub_seed) + 0.05 * sin(xa * 4.7 + _sub_seed * 2.3) + 0.02 * sin(xa * 11.0)
-	return size.y * SUB_TOP + e * sh
+	return size.y * SUB_TOP + e * sh - terrain_at(x / size.x) * size.y
+
+
+## Altura moldeada por el jugador en u (0..1), interpolada suave entre los puntos de control.
+func terrain_at(u: float) -> float:
+	var t: Array = Game.terrain
+	if t.size() != Catalog.TERRAIN_N:
+		return 0.0
+	var f := clampf(u, 0.0, 1.0) * (Catalog.TERRAIN_N - 1)
+	var i := mini(int(f), Catalog.TERRAIN_N - 2)
+	var k := f - i
+	k = k * k * (3.0 - 2.0 * k)
+	return lerpf(float(t[i]), float(t[i + 1]), k)
+
+
+func _terrain_arr() -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(Catalog.TERRAIN_N)
+	if Game.terrain.size() == Catalog.TERRAIN_N:
+		for i in Catalog.TERRAIN_N:
+			out[i] = float(Game.terrain[i])
+	return out
+
+
+## Tras moldear la arena: recoloca lo que se apoya en ella sin reconstruir la pecera.
+func terrain_changed() -> void:
+	_sub.material.set_shader_parameter("terrain", _terrain_arr())
+	for i in _decor_nodes.size():
+		set_decor_x(i, _decor_nodes[i].position.x)
+	for c in _chest_bubbles:
+		c.queue_free()
+	_chest_bubbles.clear()
+	_build_pump()
+	_equip.queue_redraw()
+	_eggs.queue_redraw()
 
 
 func swim_rect(g: Dictionary) -> Rect2:
@@ -289,7 +346,8 @@ func _build_decor() -> void:
 ## Mueve el dibujo de una decoración (durante el arrastre; Game se actualiza al soltar).
 func set_decor_x(i: int, x: float) -> void:
 	var item: DecorItem = _decor_nodes[i]
-	x = clampf(x, size.x * 0.03, size.x * 0.97)
+	var m := 0.17 if Game.is_round() else 0.03
+	x = clampf(x, size.x * m, size.x * (1.0 - m))
 	item.position = Vector2(x, surface_y(x) + [2.0, 6.0, 16.0][item.layer])
 
 
@@ -304,6 +362,8 @@ func queue_redraw_top() -> void:
 ## Mueve un aparato mientras se arrastra (modo Decorar).
 func preview_equip_x(slot: String, x: float) -> void:
 	Game.equip_pos[slot] = clampf(x / size.x, 0.04, 0.96)
+	if Game.is_round():
+		Game.equip_pos[slot] = clampf(Game.equip_pos[slot], 0.24, 0.76)
 	_equip.queue_redraw()
 
 
@@ -386,12 +446,15 @@ func _fade_ramp() -> Gradient:
 
 
 const EQUIP_X := {"pump": 0.08, "heater": 0.05, "esponja": 0.92, "mochila": 0.84, "skimmer": 0.88, "canister": 0.9,
-	"tira": 0.94, "digital": 0.86, "ato": 0.6}
+	"filtro_mini": 0.86, "tira": 0.94, "digital": 0.86, "ato": 0.6}
+const ROUND_X := {"heater": 0.3, "filter": 0.62, "thermo": 0.75}
 
 
 ## Posición x (0..1) de un aparato: la que eligió el jugador o la de fábrica.
 func equip_x(slot: String) -> float:
 	var id: String = Game.equipment.get(slot, "")
+	if Game.is_round():
+		return clampf(Game.equip_pos.get(slot, ROUND_X.get(slot, 0.5)), 0.24, 0.76)
 	return Game.equip_pos.get(slot, EQUIP_X.get(slot, EQUIP_X.get(id, 0.5)))
 
 
@@ -415,7 +478,8 @@ func _draw_equipment() -> void:
 	var e: Dictionary = Game.equipment
 	var u := decor_scale()
 	equip_rects.clear()
-	equip_rects["light"] = Rect2(0, -34, size.x, 34)
+	if "light" in Catalog.TANKS[Game.tank_tier].equip:
+		equip_rects["light"] = Rect2(0, -34, size.x, 34)
 	var wear := func(slot: String) -> float: return clampf(1.0 - Game.condition(slot) / 100.0, 0.0, 1.0)
 	if e.pump != "":
 		var x := equip_x("pump") * size.x
@@ -427,7 +491,7 @@ func _draw_equipment() -> void:
 		equip_rects["pump"] = Rect2(p - Vector2(18, 14) * u, Vector2(36, 22) * u)
 		_grime(ci, Rect2(p - Vector2(12, 6) * u, Vector2(24, 9) * u), wear.call("pump"), 11)
 	if e.heater != "":
-		var r := Rect2(equip_x("heater") * size.x - 6.5 * u, size.y * 0.06, 13 * u, size.y * 0.42)
+		var r := Rect2(equip_x("heater") * size.x - 6.5 * u, size.y * 0.06, 13 * u, size.y * (0.26 if e.heater == "calentador_mini" else 0.42))
 		var w: float = wear.call("heater")
 		ci.draw_rect(r, Color(0.8, 0.95, 1.0, 0.28))
 		var on := Game.water_temp < Game._temp_target() - 0.1
@@ -442,6 +506,15 @@ func _draw_equipment() -> void:
 	var dirty: float = wear.call("filter")
 	var fx := equip_x("filter") * size.x
 	match e.filter:
+		"filtro_mini":
+			# Mini cascada colgada del borde: caja pequeña, chorrito y tubo de aspiración.
+			var r := Rect2(fx - 20 * u, -10 * u, 40 * u, 30 * u)
+			ci.draw_rect(Rect2(fx - 4 * u, r.end.y, 8 * u, size.y * 0.3), Color(0.22, 0.24, 0.27, 0.9))
+			ci.draw_rect(r, Color(0.2, 0.55, 0.62))
+			ci.draw_rect(Rect2(r.position, Vector2(r.size.x, 6 * u)), Color(0.28, 0.68, 0.75))
+			ci.draw_rect(Rect2(r.position.x - 6 * u, r.position.y + 10 * u, 6 * u, (8 + 22 * (1.0 - dirty)) * u), Color(0.85, 0.95, 1.0, 0.5 * (1.0 - dirty)))
+			_grime(ci, r, dirty, 24)
+			equip_rects["filter"] = Rect2(r.position, Vector2(r.size.x, r.size.y + size.y * 0.3))
 		"esponja":
 			var c := Vector2(fx, surface_y(fx))
 			ci.draw_line(c + Vector2(0, -60 * u), Vector2(c.x, 0), Color(0.85, 0.95, 0.95, 0.4), 3.0 * u, true)

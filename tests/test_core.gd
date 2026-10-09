@@ -40,6 +40,7 @@ func _init() -> void:
 	game.new_game()
 	game._refresh_water()
 	check(game.fish.size() == 3, "partida nueva con 3 peces")
+	check(game.is_round() and game.equipment.values().all(func(v): return v == ""), "se empieza en la pecera redonda y sin aparatos")
 	game.last_sim -= 8 * 3600.0
 	var t0 := Time.get_ticks_msec()
 	game._catch_up(8 * 3600.0)
@@ -76,10 +77,21 @@ func _init() -> void:
 
 	# Tienda y guardado.
 	game.coins = 10000
+	game.buy_equipment("mochila")
+	check(game.equipment.filter == "", "la pecera redonda no admite un filtro estándar")
+	check(game.install_block("difusor") != "", "la pecera redonda no tiene hueco para aireador")
+	game.buy_equipment("filtro_mini")
+	check(game.equipment.filter == "filtro_mini", "filtro básico instalado")
+	game._wear(200 * 3600.0)
+	check(game.equipment.filter == "", "un aparato básico abandonado se rompe")
+	var wts: PackedFloat32Array = game.algae_weights()
+	check(wts[0] == 0.0 and wts[wts.size() / 2 + 20] > 0.0, "en la pecera redonda no crecen algas fuera del cristal")
 	game.buy_equipment("esponja")
 	check(game.equipment.filter == "esponja", "filtro instalado")
-	game.buy_tank(1)
-	check(game.tank_tier == 1 and game.capacity() == 10, "pecera ampliada")
+	game.buy_tank(2)
+	check(game.tank_tier == 2 and game.capacity() == 10 and not game.is_round(), "pecera ampliada")
+	game.buy_equipment("canister")
+	check(game.equipment.filter == "canister", "la de 60 L admite equipo pro")
 	game.buy_decor("cueva")
 	check(game.decor.any(func(d): return d.id == "cueva"), "decoración colocada")
 	var n: int = game.decor.size()
@@ -91,8 +103,8 @@ func _init() -> void:
 
 	# Mantenimiento: el filtro se desgasta con el tiempo y rinde menos.
 	game.equip_cond.filter = 100.0
-	game._wear(30 * 3600.0)
-	check(game.condition("filter") < 30.0, "el filtro se ensucia (%.0f%%)" % game.condition("filter"))
+	game._wear(100 * 3600.0)
+	check(game.condition("filter") < 30.0 and game.equipment.filter == "canister", "el filtro pro se ensucia pero no se rompe (%.0f%%)" % game.condition("filter"))
 	check(game.efficiency("filter") < 0.5, "filtro sucio rinde menos")
 	check(game.needs_maintenance().has("filter"), "aviso de mantenimiento")
 	game.maintain("filter")

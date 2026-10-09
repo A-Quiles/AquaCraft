@@ -59,6 +59,8 @@ func _run() -> void:
 		sm.set_shader_parameter(["col_a", "col_b", "col_c"][k], Catalog.color(Catalog.SUBSTRATES.arena.cols[k]))
 	sm.set_shader_parameter("pebble", 0.0)
 	sm.set_shader_parameter("size", sub.size)
+	sm.set_shader_parameter("tank", Vector2(1024, 520))
+	sm.set_shader_parameter("rect_top", 430.0)
 	sm.set_shader_parameter("caustics", CAUSTICS)
 	sm.set_shader_parameter("noise", NOISE)
 	sub.material = sm

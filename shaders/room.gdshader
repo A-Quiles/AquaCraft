@@ -10,8 +10,10 @@ uniform vec3 lamp : source_color = vec3(1.0, 0.72, 0.45);
 uniform vec3 glow : source_color = vec3(0.25, 0.85, 0.95);
 
 void fragment() {
-	vec2 px = UV * size;
-	vec3 col = mix(wall_top, wall_low, smoothstep(0.0, 0.85, UV.y));
+	// SCREEN_UV y no UV: el mismo material tapa las esquinas de la pecera redonda (main.gd).
+	vec2 uv = SCREEN_UV;
+	vec2 px = uv * size;
+	vec3 col = mix(wall_top, wall_low, smoothstep(0.0, 0.85, uv.y));
 
 	// Papel pintado: rayas finas + rombos muy sutiles.
 	float stripe = sin(px.x * 0.105) * 0.5 + 0.5;
@@ -31,7 +33,7 @@ void fragment() {
 
 	col *= mix(1.0, 0.55, night);
 	// Viñeta
-	vec2 v = UV - 0.5;
+	vec2 v = uv - 0.5;
 	col *= 1.0 - dot(v, v) * 0.55;
 	float grain = fract(sin(dot(floor(px), vec2(12.9898, 78.233))) * 43758.5453);
 	COLOR = vec4(col + (grain - 0.5) * 0.012, 1.0);

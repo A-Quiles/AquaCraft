@@ -9,7 +9,10 @@ uniform float pebble = 1.0;          // 1 grava · 0 arena
 uniform float light = 1.0;
 uniform float night = 0.0;
 uniform float seed = 0.0;
-uniform vec2 size = vec2(600.0, 120.0);
+uniform vec2 size = vec2(600.0, 120.0);   // tamaño de este rect
+uniform vec2 tank = vec2(600.0, 500.0);   // tamaño de la pecera
+uniform float rect_top = 250.0;           // dónde empieza este rect dentro de la pecera
+uniform float terrain[14];                // alturas moldeadas (fracción del alto), igual que TankView.terrain_at
 uniform sampler2D caustics : repeat_enable, filter_linear_mipmap;
 uniform sampler2D noise : repeat_enable, filter_linear;
 
@@ -18,17 +21,29 @@ vec2 hash2(vec2 p) {
 	return fract(sin(p) * 43758.5453);
 }
 
+float terr(float u) {
+	float f = clamp(u, 0.0, 1.0) * 13.0;
+	int i = int(min(floor(f), 12.0));
+	float k = f - float(i);
+	k = k * k * (3.0 - 2.0 * k);
+	return mix(terrain[i], terrain[i + 1], k);
+}
+
 void fragment() {
-	vec2 uv = UV;
-	float x = uv.x * size.x / size.y;
-	float edge = 0.3 + 0.08 * sin(x * 1.9 + seed) + 0.05 * sin(x * 4.7 + seed * 2.3) + 0.02 * sin(x * 11.0);
-	float aa = 1.5 / size.y;
-	float inside = smoothstep(edge - aa, edge + aa, uv.y);
+	vec2 px = vec2(UV.x * size.x, rect_top + UV.y * size.y);   // en píxeles de la pecera
+	float sh = tank.y * 0.2;
+	float x = px.x / sh;
+	float e = 0.3 + 0.08 * sin(x * 1.9 + seed) + 0.05 * sin(x * 4.7 + seed * 2.3) + 0.02 * sin(x * 11.0);
+	float u = px.x / tank.x;
+	float surf = tank.y * 0.8 + e * sh - terr(u) * tank.y;
+	float inside = smoothstep(surf - 1.5, surf + 1.5, px.y);
 	if (inside <= 0.0) {
 		discard;
 	}
-	float depth = clamp((uv.y - edge) / (1.0 - edge), 0.0, 1.0);   // 0 fondo lejano · 1 cristal
-	vec2 px = uv * size;
+	float depth = clamp((px.y - surf) / max(tank.y - surf, 1.0), 0.0, 1.0);   // 0 fondo lejano · 1 cristal
+	// Laderas: la que mira a la luz (izquierda) se aclara, la otra se oscurece.
+	float slope = (terr(u + 0.01) - terr(u - 0.01)) / 0.02 * tank.y / tank.x;
+	vec2 uv = vec2(UV.x, (px.y - tank.y * 0.8) / sh);
 
 	// Arena
 	float n = texture(noise, px / 220.0).r;
@@ -75,6 +90,7 @@ void fragment() {
 	col += vec3(0.6, 0.95, 0.9) * min(c1, c2) * 0.35 * light * (1.0 - depth * 0.5);
 
 	// Fondo lejano con niebla de agua, sombra de contacto y borde inferior oscuro.
+	col *= 1.0 + clamp(slope, -1.0, 1.0) * 0.18 * (1.0 - depth);
 	col = mix(col, fog_col, (1.0 - smoothstep(0.0, 0.45, depth)) * 0.45);
 	col *= 1.0 - 0.35 * smoothstep(0.75, 1.0, depth);
 	col *= mix(1.0, 0.7, night);

@@ -80,7 +80,7 @@ func _process(dt: float) -> void:
 	vel = vel.lerp(desired, 1.0 - exp(-dt * (4.0 if flee > 0.0 else 1.6)))
 	position += vel * dt
 	var r := tank.swim_rect(data.genes)
-	position = position.clamp(r.position, r.end)
+	position = tank.fit(position.clamp(r.position, r.end), size_px() * 0.5)
 
 	if absf(vel.x) > 5.0:
 		facing = signf(vel.x)
@@ -112,7 +112,8 @@ func _random_point() -> Vector2:
 	var r := tank.swim_rect(data.genes)
 	var zone: String = Catalog.SPECIES[data.genes.sp].zone
 	var x := randf_range(r.position.x, r.end.x)
+	var half := FishArt.size_px(data.genes, data.grow) * 0.5
 	match zone:
-		"bottom": return Vector2(x, r.end.y - randf() * 18.0)
-		"top": return Vector2(x, lerpf(r.position.y, r.end.y, randf() * 0.45))
-	return Vector2(x, lerpf(r.position.y, r.end.y, randf_range(0.05, 0.9)))
+		"bottom": return tank.fit(Vector2(x, maxf(r.end.y, tank.surface_y(x)) - randf() * 18.0), half)
+		"top": return tank.fit(Vector2(x, lerpf(r.position.y, r.end.y, randf() * 0.45)), half)
+	return tank.fit(Vector2(x, lerpf(r.position.y, r.end.y, randf_range(0.05, 0.9))), half)

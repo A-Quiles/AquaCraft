@@ -2,7 +2,9 @@ extends Node2D
 ## Escena principal: habitación, mueble, pecera, marco y la interfaz. Gestiona el toque en el agua.
 
 const ROOM := preload("res://shaders/room.gdshader")
-const SHELF_SPACE := 150.0           ## alto reservado sobre la tapa para la estantería de cuidados
+const SHELF_SPACE := 190.0           ## alto reservado sobre la pecera: estantería de pared + hueco hasta la tapa
+const SHELF_Y := 104.0               ## balda de la estantería, bajo la barra superior
+const SHELF_K := 0.78                ## escala de los objetos de la estantería
 
 enum Mode { NORMAL, FEED, CLEAN, EDIT }
 
@@ -15,6 +17,7 @@ var tank_rect := Rect2()
 var _room: ColorRect
 var _furniture: Node2D
 var _frame: Node2D
+var _bowl_mask: Node2D               ## pinta la pared encima de lo que asoma fuera de la pecera redonda
 var _props: Node2D
 var prop_rects := {}                 ## nombre → Rect2 de los objetos de la estantería
 var _last_drag := Vector2.INF
@@ -23,6 +26,7 @@ var _drag_off := 0.0
 var _drag_from := Vector2.ZERO
 var _drag_moved := false
 var _drag_equip := ""                ## aparato que se arrastra en modo Decorar
+var sculpt := false                  ## Decorar → moldear la arena
 var _feed_cd := 0.0
 var _night := 0.0
 var _night_acc := 999.0
@@ -44,6 +48,11 @@ func _ready() -> void:
 	add_child(_props)
 	tank = TankView.new()
 	add_child(tank)
+	_bowl_mask = Node2D.new()
+	_bowl_mask.z_index = 58
+	_bowl_mask.material = _room.material
+	_bowl_mask.draw.connect(_draw_bowl_mask)
+	add_child(_bowl_mask)
 	_frame = Node2D.new()
 	_frame.z_index = 60
 	_frame.draw.connect(_draw_frame)
@@ -79,6 +88,13 @@ func _screenshot() -> void:
 			set_mode(Mode.EDIT)
 			tank.selected_decor = 1
 			tank.queue_redraw_top()
+		"sculpt":
+			set_mode(Mode.EDIT)
+			set_sculpt(true)
+			for k in 40:
+				_sculpt(Vector2(tank.size.x * 0.25, 0), 0.006)
+				_sculpt(Vector2(tank.size.x * 0.7, 0), 0.004)
+				_sculpt(Vector2(tank.size.x * 0.95, 0), -0.0015)
 		"equip": hud.open_equipment(open.get_slice(":", 1))
 		"wear":
 			for slot in Game.equipment:
@@ -92,13 +108,13 @@ func _screenshot() -> void:
 				hud._tutorial._advance()
 		"algae":
 			for i in Game.algae.size():
-				Game.algae[i] = mini(255, int(Game._weights[i] * float(open.get_slice(":", 1))))
+				Game.algae[i] = mini(255, int(Game.algae_weights()[i] * float(open.get_slice(":", 1))))
 			Game._refresh_water()
 			Game.algae_changed.emit()
 			Game.changed.emit()
 		"clean", "dirty":
 			for i in Game.algae.size():
-				Game.algae[i] = mini(255, int(Game._weights[i] * 150.0))
+				Game.algae[i] = mini(255, int(Game.algae_weights()[i] * 150.0))
 			Game._refresh_water()
 			Game.algae_changed.emit()
 			Game.changed.emit()
@@ -138,14 +154,16 @@ func _layout() -> void:
 	var top := safe.x + 196.0
 	var bottom := safe.y + 150.0
 	var tier := Game.tank_tier
-	var stand: float = [96.0, 84.0, 64.0, 40.0][tier]
+	var stand: float = [104.0, 96.0, 84.0, 64.0, 40.0][tier]
 	var avail := Rect2(0, top, vp.x, vp.y - top - bottom - stand)
 	# La pecera crece con la pantalla: en móviles altos aprovecha la altura en vez de dejar pared vacía.
 	# Pecera más contenida; el conjunto mueble + pecera se centra en la pantalla en móviles altos.
-	var w: float = vp.x * [0.66, 0.78, 0.9, 1.0][tier] - (28.0 if tier == 3 else 0.0)
-	var h: float = minf(avail.size.y * [0.46, 0.56, 0.7, 0.9][tier], w * [0.95, 0.92, 1.05, 1.7][tier])
+	var w: float = vp.x * [0.58, 0.66, 0.78, 0.9, 1.0][tier] - (28.0 if tier == 4 else 0.0)
+	var h: float = minf(avail.size.y * [0.5, 0.46, 0.56, 0.7, 0.9][tier], w * [Game.BOWL_H, 0.95, 0.92, 1.05, 1.7][tier])
 	var bottom_y: float = minf(avail.end.y, avail.position.y + avail.size.y * 0.5 + h * 0.5 + 40.0)
 	h = minf(h, bottom_y - top - SHELF_SPACE)          # deja sitio para la estantería
+	if Game.is_round():
+		w = h / Game.BOWL_H                            # la bola conserva sus proporciones
 	var r := Rect2(Vector2((vp.x - w) * 0.5, bottom_y - h), Vector2(w, h))
 	_room.size = vp
 	_room.material.set_shader_parameter("size", vp)
@@ -157,11 +175,13 @@ func _layout() -> void:
 		tank.rebuild()
 	_furniture.queue_redraw()
 	_frame.queue_redraw()
+	_bowl_mask.queue_redraw()
 	_props.queue_redraw()
 
 
 func set_mode(m: Mode) -> void:
 	mode = Mode.NORMAL if mode == m else m
+	sculpt = false
 	tank.overlay.sponge_t = 0.0
 	_props.queue_redraw()
 	tank.editing = mode == Mode.EDIT
@@ -169,6 +189,36 @@ func set_mode(m: Mode) -> void:
 	tank.selected_equip = ""
 	tank.queue_redraw_top()
 	hud.refresh_mode()
+
+
+## Decorar: alterna entre mover objetos y moldear la arena.
+func set_sculpt(on: bool) -> void:
+	sculpt = on
+	tank.editing = mode == Mode.EDIT and not on        # sin recuadros mientras se moldea
+	tank.selected_decor = -1
+	tank.selected_equip = ""
+	tank.queue_redraw_top()
+	hud.refresh_mode()
+
+
+## Sube (dy > 0) o baja la arena alrededor de x con un pincel suave.
+func _sculpt(p: Vector2, dy: float) -> void:
+	var n := Catalog.TERRAIN_N
+	if Game.terrain.size() != n:
+		Game.terrain = []
+		Game.terrain.resize(n)
+		Game.terrain.fill(0.0)
+	var u := p.x / tank.size.x
+	for i in n:
+		var d := (u - float(i) / (n - 1)) / 0.085
+		Game.terrain[i] = clampf(float(Game.terrain[i]) + dy * exp(-d * d), Catalog.TERRAIN_MIN, Catalog.TERRAIN_MAX)
+	tank.terrain_changed()
+
+
+func flatten_terrain() -> void:
+	Game.terrain = []
+	tank.rebuild()
+	Game.save_game()
 
 
 # ───────────────────────── Toques en el agua ─────────────────────────
@@ -180,7 +230,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		var inside := Rect2(0, -34, tank.size.x, tank.size.y + 34).has_point(p)
 		if not event.pressed:
 			_last_drag = Vector2.INF
-			if mode == Mode.EDIT:
+			if mode == Mode.EDIT and sculpt:
+				tank.rebuild()                 # recoloca burbujas del cofre, etc.
+				Game.save_game()
+			elif mode == Mode.EDIT:
 				_end_decor_drag()
 			return
 		var prop := prop_at(event.position)
@@ -198,6 +251,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			Mode.CLEAN:
 				_last_drag = p
 				tank.clean_stroke(p)
+			Mode.EDIT when sculpt:
+				_last_drag = p
 			Mode.EDIT:
 				# Los aparatos (filtro, termómetro...) se cogen antes que la decoración.
 				var slot := tank.equipment_at(p)
@@ -221,6 +276,13 @@ func _unhandled_input(event: InputEvent) -> void:
 					hud.open_equipment(slot)
 				else:
 					tank.startle(p)
+	elif event is InputEventScreenDrag and mode == Mode.EDIT and sculpt:
+		var p := tank.to_local(event.position)
+		if _last_drag == Vector2.INF or not Rect2(Vector2.ZERO, tank.size).has_point(p):
+			return
+		# Arrastrar hacia arriba amontona arena; hacia abajo la quita.
+		_sculpt(p, (_last_drag.y - p.y) / tank.size.y * 0.9)
+		_last_drag = p
 	elif event is InputEventScreenDrag and mode == Mode.EDIT and (_drag_idx >= 0 or _drag_equip != ""):
 		var p := tank.to_local(event.position)
 		if p.distance_to(_drag_from) > 8.0:
@@ -284,7 +346,7 @@ func _draw_furniture() -> void:
 	var r := tank_rect
 	_draw_wall(ci, vp, r)
 	var top_y := r.end.y + 14.0
-	var x0 := 16.0 if Game.tank_tier < 3 else 0.0
+	var x0 := 16.0 if Game.tank_tier < 4 else 0.0
 	var x1 := vp.x - x0
 	# Sombra en la pared y encimera
 	ci.draw_rect(Rect2(x0, top_y + 6, x1 - x0, vp.y - top_y), Color(0, 0, 0, 0.25))
@@ -323,8 +385,7 @@ func _draw_furniture() -> void:
 ## Pared: cuadro con un pez y estante con atrezo, solo si queda sitio sobre la pecera.
 func _draw_wall(ci: Node2D, vp: Vector2, r: Rect2) -> void:
 	var top := Hud.safe_margins().x + 200.0
-	var space := r.position.y - SHELF_SPACE - top
-	if space < 150.0:
+	if r.position.y - top < 165.0:
 		return
 	# Cuadro
 	var fr := Rect2(vp.x * 0.07, top + 20.0, 150.0, 116.0)
@@ -376,69 +437,79 @@ func use_prop(k: String) -> void:
 func _draw_props() -> void:
 	var ci := _props
 	prop_rects.clear()
-	var r := tank_rect
 	var vp := get_viewport_rect().size
-	var sy := r.position.y - 46.0               # balda justo encima de la tapa
-	var sw := minf(vp.x - 20.0, maxf(r.size.x + 40.0, 600.0))
-	var sx := (vp.x - sw) * 0.5
-	ci.draw_rect(Rect2(sx + 4, sy + 6, sw, 14), Color(0, 0, 0, 0.2))
-	ci.draw_rect(Rect2(sx, sy, sw, 14), Color("b07a4f"))
-	ci.draw_rect(Rect2(sx, sy + 10, sw, 4), Color("8a5a36"))
+	var k := SHELF_K
 	var items: Array = ["sponge"]
 	for f in Catalog.FOOD_ORDER:
 		items.append("food:" + f)
 	for p in Catalog.PRODUCT_ORDER:
 		items.append("prod:" + p)
-	var step := sw / items.size()
+	# Balda de pared arriba a la derecha, lejos de la pecera (el cuadro queda a la izquierda).
+	var step := 60.0 * k
+	var sw := step * items.size() + 24.0
+	var sx := vp.x - sw - 18.0
+	var sy := Hud.safe_margins().x + 196.0 + SHELF_Y
+	ci.draw_rect(Rect2(sx + 4, sy + 6, sw, 12), Color(0, 0, 0, 0.18))
+	for bx in [sx + 26.0, sx + sw - 34.0]:
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(bx, sy + 10), Vector2(bx + 8, sy + 10), Vector2(bx + 8, sy + 34)]), Color("6b4428"))
+	ci.draw_rect(Rect2(sx, sy, sw, 12), Color("b07a4f"))
+	ci.draw_rect(Rect2(sx, sy + 9, sw, 3), Color("8a5a36"))
 	var font := UI.bold
 	for i in items.size():
-		var k: String = items[i]
-		var cx := sx + step * (i + 0.5)
-		var lifted := (k == "sponge" and mode == Mode.CLEAN) or (k == "food:" + food_type and mode == Mode.FEED)
-		var base := Vector2(cx, sy - (14.0 if lifted else 0.0))
+		var key: String = items[i]
+		var lifted := (key == "sponge" and mode == Mode.CLEAN) or (key == "food:" + food_type and mode == Mode.FEED)
+		var base := Vector2(sx + 12.0 + step * (i + 0.5), sy - (12.0 if lifted else 0.0))
+		# Cada objeto se dibuja en coordenadas propias (base = 0) y a escala k.
+		ci.draw_set_transform(base, 0.0, Vector2(k, k))
+		var r := Rect2()
 		if lifted:
-			ci.draw_circle(base + Vector2(0, -32), 40, Color(1.0, 0.9, 0.5, 0.25))
-		if k == "sponge":
+			ci.draw_circle(Vector2(0, -32), 40, Color(1.0, 0.9, 0.5, 0.25))
+		if key == "sponge":
 			# Limpiacristales magnético: asa + esponja.
-			var b := Rect2(base + Vector2(-30, -34), Vector2(60, 34))
-			ci.draw_rect(Rect2(b.position + Vector2(0, 12), Vector2(60, 22)), Color("ffd34d"))
+			r = Rect2(Vector2(-30, -34), Vector2(60, 34))
+			ci.draw_rect(Rect2(r.position + Vector2(0, 12), Vector2(60, 22)), Color("ffd34d"))
 			for h in [Vector2(-18, -10), Vector2(-2, -6), Vector2(14, -12), Vector2(22, -4)]:
-				ci.draw_circle(base + h, 2.6, Color("e0a92c"))
-			ci.draw_rect(Rect2(b.position + Vector2(0, 4), Vector2(60, 9)), Color("2e9e6a"))
-			ci.draw_rect(Rect2(b.position + Vector2(14, -6), Vector2(32, 10)), Color("3a4552"))
-			prop_rects[k] = b.grow(4)
-		elif k.begins_with("food:"):
-			var id := k.substr(5)
+				ci.draw_circle(h, 2.6, Color("e0a92c"))
+			ci.draw_rect(Rect2(r.position + Vector2(0, 4), Vector2(60, 9)), Color("2e9e6a"))
+			ci.draw_rect(Rect2(r.position + Vector2(14, -6), Vector2(32, 10)), Color("3a4552"))
+			r = r.grow(4)
+		elif key.begins_with("food:"):
+			var id := key.substr(5)
 			var col := Catalog.color(Catalog.FOODS[id].col)
-			var jar := Rect2(base + Vector2(-20, -54), Vector2(40, 54))
+			var jar := Rect2(Vector2(-20, -54), Vector2(40, 54))
 			ci.draw_rect(jar, Color(0.95, 0.97, 1.0, 0.55))
 			ci.draw_rect(Rect2(jar.position + Vector2(3, 18), Vector2(34, 33)), col.darkened(0.1))
 			ci.draw_rect(Rect2(jar.position + Vector2(-2, -8), Vector2(44, 10)), col.darkened(0.45))
 			ci.draw_rect(Rect2(jar.position + Vector2(6, 22), Vector2(28, 16)), Color("fff3df"))
 			var n := "∞" if id == "escamas" else str(Game.food.get(id, 0))
-			ci.draw_string(font, jar.position + Vector2(0, 35), n, HORIZONTAL_ALIGNMENT_CENTER, 40, 15, UI.NAVY)
+			ci.draw_string(font, jar.position + Vector2(0, 35), n, HORIZONTAL_ALIGNMENT_CENTER, 40, 16, UI.NAVY)
 			ci.draw_rect(Rect2(jar.position + Vector2(4, 2), Vector2(4, 14)), Color(1, 1, 1, 0.5))
-			prop_rects[k] = jar.grow(4)
+			r = jar.grow(4)
 		else:
-			var id := k.substr(5)
+			var id := key.substr(5)
 			var pr: Dictionary = Catalog.PRODUCTS[id]
 			var col := Catalog.color(pr.col)
-			var bot := Rect2(base + Vector2(-15, -44), Vector2(30, 44))
+			var bot := Rect2(Vector2(-15, -44), Vector2(30, 44))
 			ci.draw_rect(bot, col)
 			ci.draw_rect(Rect2(bot.position + Vector2(8, -14), Vector2(14, 14)), Color("eeeeee"))
 			ci.draw_rect(Rect2(bot.position + Vector2(10, -22), Vector2(10, 9)), col.darkened(0.4))
 			ci.draw_rect(Rect2(bot.position + Vector2(3, 12), Vector2(24, 16)), Color("fffaf2"))
-			ci.draw_string(font, bot.position + Vector2(0, 25), pr.short, HORIZONTAL_ALIGNMENT_CENTER, 30, 12, UI.NAVY)
+			ci.draw_string(font, bot.position + Vector2(0, 25), pr.short, HORIZONTAL_ALIGNMENT_CENTER, 30, 13, UI.NAVY)
 			var cnt: int = Game.products.get(id, 0)
-			ci.draw_circle(bot.end + Vector2(-2, -42), 10, UI.NAVY if cnt > 0 else UI.BAD)
-			ci.draw_string(font, bot.end + Vector2(-12, -37), str(cnt), HORIZONTAL_ALIGNMENT_CENTER, 20, 13, Color.WHITE)
-			prop_rects[k] = Rect2(bot.position + Vector2(0, -22), bot.size + Vector2(0, 22)).grow(4)
+			ci.draw_circle(bot.end + Vector2(-2, -42), 11, UI.NAVY if cnt > 0 else UI.BAD)
+			ci.draw_string(font, bot.end + Vector2(-12, -37), str(cnt), HORIZONTAL_ALIGNMENT_CENTER, 20, 14, Color.WHITE)
+			r = Rect2(bot.position + Vector2(0, -22), bot.size + Vector2(0, 22)).grow(4)
+		prop_rects[key] = Rect2(base + r.position * k, r.size * k)
+	ci.draw_set_transform(Vector2.ZERO)
 
 
 func _draw_frame() -> void:
 	var ci := _frame
 	var r := tank_rect
-	var wood := Game.tank_tier == 3
+	if Game.is_round():
+		_draw_bowl(ci, r)
+		return
+	var wood := Game.tank_tier == 4
 	var dark := Color("6b4428") if wood else Color("22303c")
 	var lid := Rect2(r.position.x - 10, r.position.y - 30, r.size.x + 20, 30)
 	ci.draw_rect(lid, dark)
@@ -457,3 +528,42 @@ func _draw_frame() -> void:
 	ci.draw_rect(Rect2(r.position.x - 10, r.end.y, r.size.x + 20, 4), dark.lightened(0.25))
 	for x in [r.position.x - 4.0, r.end.x]:
 		ci.draw_rect(Rect2(x, r.position.y, 4, r.size.y), Color(0.75, 0.97, 0.92, 0.55) if not wood else dark)
+
+
+## Pecera redonda: canto del cristal, boca abierta y brillos (el agua ya va recortada en círculo).
+func _draw_bowl(ci: Node2D, r: Rect2) -> void:
+	var b := tank.bowl()
+	var c := r.position + b.position
+	var rad := b.size.x
+	var rim_y := r.position.y - r.size.x * 0.035
+	var a := asin(clampf((rim_y - c.y) / rad, -1.0, 1.0))       # ángulo del borde (lado derecho)
+	var half := rad * cos(a)
+	ci.draw_arc(c, rad + 1.5, a, PI - a, 72, Color(0.75, 0.97, 0.92, 0.55), 4.0, true)
+	ci.draw_arc(c, rad - 3.0, PI * 0.15, PI * 0.85, 40, Color(0.75, 0.97, 0.92, 0.25), 6.0, true)
+	var lip := DecorArt.ell(Vector2(c.x, rim_y), half, 9.0)
+	lip.append(lip[0])
+	ci.draw_polyline(lip, Color(0.85, 1.0, 0.97, 0.7), 3.0, true)
+	ci.draw_arc(c, rad * 0.86, PI + 0.25, PI + 0.85, 24, Color(1, 1, 1, 0.28), 9.0, true)
+	ci.draw_arc(c, rad * 0.78, PI + 0.32, PI + 0.55, 12, Color(1, 1, 1, 0.22), 5.0, true)
+	ci.draw_arc(c, rad * 0.9, -0.95, -0.55, 16, Color(1, 1, 1, 0.16), 6.0, true)
+
+
+## Lo de la pecera es rectangular: en la redonda se tapan las esquinas con la propia pared (mismo shader).
+func _draw_bowl_mask() -> void:
+	if not Game.is_round():
+		return
+	var r := tank_rect
+	var b := tank.bowl()
+	var c := r.position + b.position
+	var rad := b.size.x + 1.0
+	var y0 := minf(r.position.y - 46.0, c.y - rad - 2.0)
+	var y1 := r.end.y + 1.0
+	for side: float in [-1.0, 1.0]:
+		var xo := c.x + side * (rad + 3.0)
+		var pts := PackedVector2Array([Vector2(xo, y0), Vector2(c.x, y0)])
+		for i in 49:
+			var a := -PI * 0.5 + side * PI * i / 48.0
+			pts.append(c + Vector2(cos(a), sin(a)) * rad)
+		pts.append(Vector2(c.x, y1))
+		pts.append(Vector2(xo, y1))
+		_bowl_mask.draw_colored_polygon(pts, Color.WHITE)

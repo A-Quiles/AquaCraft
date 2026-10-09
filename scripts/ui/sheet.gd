@@ -94,6 +94,13 @@ func scroll_area() -> VBoxContainer:
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.scroll_deadzone = 12
 	body.add_child(sc)
+	# Tarjetas y botones dejan pasar el arrastre al scroll (si no, solo se desliza tocando fuera de ellos).
+	var tree := Engine.get_main_loop() as SceneTree
+	var pass_drag := func(n: Node) -> void:
+		if n is Control and n.mouse_filter == Control.MOUSE_FILTER_STOP and sc.is_ancestor_of(n):
+			n.mouse_filter = Control.MOUSE_FILTER_PASS
+	tree.node_added.connect(pass_drag)
+	sc.tree_exiting.connect(func() -> void: tree.node_added.disconnect(pass_drag))
 	var v := UI.vbox(14)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(v)

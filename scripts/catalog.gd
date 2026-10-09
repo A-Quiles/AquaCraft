@@ -162,38 +162,48 @@ const RARITY_NAMES := ["Común", "Poco común", "Raro", "Épico", "Legendario"]
 const RARITY_COLORS := ["9aa7b5", "4fc27a", "3fa3ff", "b36bff", "ffb020"]
 const RARITY_MULT := [1.0, 1.8, 3.5, 7.0, 16.0]
 
+## round: pecera redonda (se dibuja recortada en círculo) · max_q: calidad máxima de equipo que admite
+## equip: huecos de equipo disponibles (la redonda no tiene tapa: ni luz ni aireador)
 const TANKS := [
-	{"id": "nano", "name": "Nano 20 L", "cap": 5, "o2": 4.0, "slots": 5, "price": 0, "level": 1,
-		"desc": "Tu primera pecera. Pequeñita pero acogedora."},
-	{"id": "comunitario", "name": "Comunitario 60 L", "cap": 10, "o2": 8.0, "slots": 8, "price": 900, "level": 2,
-		"desc": "Espacio para una comunidad animada."},
-	{"id": "panoramico", "name": "Panorámico 200 L", "cap": 18, "o2": 14.0, "slots": 11, "price": 4000, "level": 5,
-		"desc": "Cristal panorámico para paisajes de verdad."},
-	{"id": "monumental", "name": "Monumental 1000 L", "cap": 30, "o2": 24.0, "slots": 15, "price": 16000, "level": 9,
-		"desc": "Un muro de agua. El sueño de todo acuarista."},
+	{"id": "bola", "name": "Pecera redonda 8 L", "cap": 4, "o2": 3.0, "slots": 3, "price": 0, "level": 1, "round": true, "max_q": 1,
+		"equip": ["filter", "heater", "thermo"], "desc": "Una bola de cristal para empezar. Solo admite aparatos básicos."},
+	{"id": "nano", "name": "Nano 20 L", "cap": 6, "o2": 4.5, "slots": 5, "price": 350, "level": 2, "max_q": 2,
+		"equip": ["filter", "heater", "pump", "light", "thermo", "ato"], "desc": "Rectangular y con tapa: ya admite luz, aireador y equipo estándar."},
+	{"id": "comunitario", "name": "Comunitario 60 L", "cap": 10, "o2": 8.0, "slots": 8, "price": 900, "level": 3, "max_q": 3,
+		"equip": ["filter", "heater", "pump", "light", "thermo", "ato"], "desc": "Espacio para una comunidad animada y equipo profesional."},
+	{"id": "panoramico", "name": "Panorámico 200 L", "cap": 18, "o2": 14.0, "slots": 11, "price": 4000, "level": 5, "max_q": 3,
+		"equip": ["filter", "heater", "pump", "light", "thermo", "ato"], "desc": "Cristal panorámico para paisajes de verdad."},
+	{"id": "monumental", "name": "Monumental 1000 L", "cap": 30, "o2": 24.0, "slots": 15, "price": 16000, "level": 9, "max_q": 3,
+		"equip": ["filter", "heater", "pump", "light", "thermo", "ato"], "desc": "Un muro de agua. El sueño de todo acuarista."},
 ]
 
-## slot: filter / heater / pump / light / thermo. Instalar uno sustituye al anterior del mismo hueco.
+## slot: filter / heater / pump / light / thermo / ato. Instalar uno sustituye al anterior del mismo hueco.
+## q: calidad 1 básico (barato, se gasta rápido y SE ROMPE al llegar a 0%) · 2 estándar · 3 pro.
 ## wear: % de estado que pierde por hora (el filtro, más cuanto más carga de peces).
+## rate: °C por minuto que mueve el calentador (los básicos tardan más en calentar).
 ## maint: acción de mantenimiento que lo deja al 100%.
 const EQUIPMENT := {
-	"esponja": {"slot": "filter", "name": "Filtro de esponja", "price": 150, "level": 1, "eff": 0.35, "wear": 2.5, "maint": "Escurrir la esponja", "desc": "Algas un 35% más lentas. Se ensucia rápido."},
-	"mochila": {"slot": "filter", "name": "Filtro de mochila", "price": 700, "level": 3, "eff": 0.55, "wear": 1.6, "maint": "Cambiar el cartucho", "desc": "Algas un 55% más lentas."},
-	"canister": {"slot": "filter", "name": "Filtro canister", "price": 2400, "level": 6, "eff": 0.75, "wear": 0.9, "maint": "Limpiar los cestillos", "desc": "Algas un 75% más lentas. Casi no da guerra."},
-	"calentador_fijo": {"slot": "heater", "name": "Calentador fijo", "price": 90, "level": 1, "fixed": 25.0, "wear": 0.6, "maint": "Quitar la cal", "desc": "Mantiene el agua a 25 °C."},
-	"calentador": {"slot": "heater", "name": "Calentador con termostato", "price": 220, "level": 2, "wear": 0.5, "maint": "Quitar la cal", "desc": "Elige la temperatura del agua (18–31 °C)."},
-	"difusor": {"slot": "pump", "name": "Piedra difusora", "price": 120, "level": 1, "o2": 3.0, "wear": 1.4, "maint": "Cambiar la piedra", "desc": "+3 de oxígeno y burbujitas."},
-	"bomba": {"slot": "pump", "name": "Bomba de aire doble", "price": 600, "level": 3, "o2": 6.0, "wear": 1.0, "maint": "Revisar la membrana", "desc": "+6 de oxígeno."},
-	"circulacion": {"slot": "pump", "name": "Bomba de circulación", "price": 2000, "level": 5, "o2": 10.0, "wear": 0.8, "maint": "Limpiar el rotor", "desc": "+10 de oxígeno."},
-	"led_pro": {"slot": "light", "name": "Pantalla LED Pro", "price": 500, "level": 3, "happy": 6.0, "wear": 0.7, "maint": "Limpiar la tapa", "desc": "Luz brillante: +felicidad y plantas más vivas."},
-	"led_plantada": {"slot": "light", "name": "LED plantada RGB", "price": 1400, "level": 6, "happy": 10.0, "wear": 0.6, "maint": "Limpiar la tapa", "desc": "Espectro completo: colores intensos y mucha felicidad."},
-	"skimmer": {"slot": "filter", "water": "salada", "name": "Skimmer (desnatador)", "price": 1500, "level": 3, "eff": 0.7, "wear": 1.2, "maint": "Vaciar el vaso colector", "desc": "El filtro estrella del marino: algas un 70% más lentas."},
-	"ato": {"slot": "ato", "water": "salada", "name": "Reposición automática", "price": 700, "level": 2, "wear": 1.0, "maint": "Rellenar el depósito", "desc": "Repone el agua evaporada: la salinidad deja de subir."},
-	"tira": {"slot": "thermo", "name": "Termómetro adhesivo", "price": 30, "level": 1, "wear": 0.0, "desc": "Muestra la temperatura en grados enteros."},
-	"digital": {"slot": "thermo", "name": "Termómetro digital", "price": 180, "level": 2, "wear": 0.5, "maint": "Cambiar la pila", "desc": "Décimas de grado y alarma si tus peces pasan frío o calor."},
+	"filtro_mini": {"slot": "filter", "q": 1, "name": "Mini filtro de cascada", "price": 45, "level": 1, "eff": 0.2, "wear": 4.0, "maint": "Aclarar la esponjita", "desc": "Algas un 20% más lentas. Barato, pero se atasca enseguida."},
+	"esponja": {"slot": "filter", "q": 1, "name": "Filtro de esponja", "price": 120, "level": 1, "eff": 0.35, "wear": 2.5, "maint": "Escurrir la esponja", "desc": "Algas un 35% más lentas. Se ensucia rápido."},
+	"mochila": {"slot": "filter", "q": 2, "name": "Filtro de mochila", "price": 700, "level": 3, "eff": 0.55, "wear": 1.6, "maint": "Cambiar el cartucho", "desc": "Algas un 55% más lentas."},
+	"canister": {"slot": "filter", "q": 3, "name": "Filtro canister", "price": 2400, "level": 6, "eff": 0.75, "wear": 0.9, "maint": "Limpiar los cestillos", "desc": "Algas un 75% más lentas. Casi no da guerra."},
+	"calentador_mini": {"slot": "heater", "q": 1, "name": "Calentador mini 10 W", "price": 40, "level": 1, "fixed": 24.0, "rate": 0.1, "wear": 1.6, "maint": "Quitar la cal", "desc": "Fijo a 24 °C. Calienta muy despacio y la cal lo gasta pronto."},
+	"calentador_fijo": {"slot": "heater", "q": 2, "name": "Calentador fijo 50 W", "price": 110, "level": 1, "fixed": 25.0, "rate": 0.3, "wear": 0.6, "maint": "Quitar la cal", "desc": "Mantiene el agua a 25 °C."},
+	"calentador": {"slot": "heater", "q": 2, "name": "Calentador con termostato", "price": 220, "level": 2, "rate": 0.6, "wear": 0.5, "maint": "Quitar la cal", "desc": "Elige la temperatura del agua (18–31 °C). Rápido."},
+	"difusor": {"slot": "pump", "q": 1, "name": "Piedra difusora", "price": 120, "level": 1, "o2": 3.0, "wear": 1.4, "maint": "Cambiar la piedra", "desc": "+3 de oxígeno y burbujitas."},
+	"bomba": {"slot": "pump", "q": 2, "name": "Bomba de aire doble", "price": 600, "level": 3, "o2": 6.0, "wear": 1.0, "maint": "Revisar la membrana", "desc": "+6 de oxígeno."},
+	"circulacion": {"slot": "pump", "q": 3, "name": "Bomba de circulación", "price": 2000, "level": 5, "o2": 10.0, "wear": 0.8, "maint": "Limpiar el rotor", "desc": "+10 de oxígeno."},
+	"led_pro": {"slot": "light", "q": 2, "name": "Pantalla LED Pro", "price": 500, "level": 2, "happy": 6.0, "wear": 0.7, "maint": "Limpiar la tapa", "desc": "Luz brillante: +felicidad y plantas más vivas."},
+	"led_plantada": {"slot": "light", "q": 3, "name": "LED plantada RGB", "price": 1400, "level": 6, "happy": 10.0, "wear": 0.6, "maint": "Limpiar la tapa", "desc": "Espectro completo: colores intensos y mucha felicidad."},
+	"skimmer": {"slot": "filter", "q": 2, "water": "salada", "name": "Skimmer (desnatador)", "price": 1500, "level": 3, "eff": 0.7, "wear": 1.2, "maint": "Vaciar el vaso colector", "desc": "El filtro estrella del marino: algas un 70% más lentas."},
+	"ato": {"slot": "ato", "q": 2, "water": "salada", "name": "Reposición automática", "price": 700, "level": 2, "wear": 1.0, "maint": "Rellenar el depósito", "desc": "Repone el agua evaporada: la salinidad deja de subir."},
+	"tira": {"slot": "thermo", "q": 1, "name": "Termómetro adhesivo", "price": 30, "level": 1, "wear": 0.35, "maint": "Despegarla y limpiarla", "desc": "Grados enteros. La tira se decolora con el tiempo."},
+	"digital": {"slot": "thermo", "q": 2, "name": "Termómetro digital", "price": 180, "level": 2, "wear": 0.5, "maint": "Cambiar la pila", "desc": "Décimas de grado y alarma si tus peces pasan frío o calor."},
 }
-const EQUIPMENT_ORDER := ["esponja", "mochila", "canister", "skimmer", "calentador_fijo", "calentador", "difusor", "bomba", "circulacion",
-	"led_pro", "led_plantada", "tira", "digital", "ato"]
+const EQUIPMENT_ORDER := ["filtro_mini", "esponja", "mochila", "canister", "skimmer", "calentador_mini", "calentador_fijo", "calentador",
+	"difusor", "bomba", "circulacion", "led_pro", "led_plantada", "tira", "digital", "ato"]
+const QUALITY_NAMES := ["", "Básico", "Estándar", "Pro"]
+const QUALITY_COLORS := ["", "9aa7b5", "3fa3ff", "b36bff"]
 const SLOT_NAMES := {"filter": "Filtro", "heater": "Calentador", "pump": "Aireador", "light": "Iluminación", "thermo": "Termómetro", "ato": "Reposición"}
 
 ## Modos de juego. algae/wear/hunger/evap: multiplicadores · tol: margen sobre los rangos ideales
@@ -273,21 +283,23 @@ const PRODUCT_ORDER := ["ph_up", "ph_down", "antialgas"]
 const STORY := [
 	{"text": "Da de comer a tus peces", "type": "feeds", "target": 1, "coins": 30, "pearls": 0, "xp": 15},
 	{"text": "Limpia las algas del cristal", "type": "cleaned", "target": 10, "coins": 40, "pearls": 0, "xp": 15},
-	{"text": "Haz el mantenimiento del filtro", "type": "maint", "target": 1, "coins": 0, "pearls": 2, "xp": 20},
+	{"text": "Instala un filtro", "type": "filter", "target": 1, "coins": 40, "pearls": 0, "xp": 20},
+	{"text": "Instala un calentador", "type": "heater", "target": 1, "coins": 0, "pearls": 2, "xp": 25},
+	{"text": "Haz el mantenimiento de un aparato", "type": "maint", "target": 1, "coins": 0, "pearls": 2, "xp": 20},
 	{"text": "Cría tu primer pez", "type": "bred", "target": 1, "coins": 0, "pearls": 3, "xp": 30},
 	{"text": "Decora con una planta", "type": "plant", "target": 1, "coins": 60, "pearls": 0, "xp": 20},
 	{"text": "Vende un pez", "type": "sold", "target": 1, "coins": 80, "pearls": 0, "xp": 20},
+	{"text": "Muda tus peces a la Nano 20 L", "type": "tank", "target": 1, "coins": 0, "pearls": 3, "xp": 30},
 	{"text": "Alcanza el nivel 3", "type": "level", "target": 3, "coins": 0, "pearls": 3, "xp": 0},
-	{"text": "Instala un calentador", "type": "heater", "target": 1, "coins": 0, "pearls": 2, "xp": 25},
-	{"text": "Muda tus peces a la pecera de 60 L", "type": "tank", "target": 1, "coins": 0, "pearls": 5, "xp": 40},
+	{"text": "Muda tus peces a la pecera de 60 L", "type": "tank", "target": 2, "coins": 0, "pearls": 5, "xp": 40},
 	{"text": "Consigue un pez con mutación", "type": "mutation", "target": 1, "coins": 0, "pearls": 5, "xp": 50},
 	{"text": "Ten 8 peces a la vez", "type": "fishcount", "target": 8, "coins": 300, "pearls": 0, "xp": 40},
 	{"text": "Cría un pez Raro o mejor", "type": "rarity", "target": 2, "coins": 0, "pearls": 6, "xp": 60},
 	{"text": "Alcanza el nivel 6", "type": "level", "target": 6, "coins": 0, "pearls": 5, "xp": 0},
-	{"text": "Consigue la pecera de 200 L", "type": "tank", "target": 2, "coins": 0, "pearls": 8, "xp": 80},
+	{"text": "Consigue la pecera de 200 L", "type": "tank", "target": 3, "coins": 0, "pearls": 8, "xp": 80},
 	{"text": "Descubre 25 variantes", "type": "variants", "target": 25, "coins": 0, "pearls": 8, "xp": 80},
 	{"text": "Cría un pez Legendario", "type": "rarity", "target": 4, "coins": 0, "pearls": 15, "xp": 150},
-	{"text": "Consigue el acuario Monumental", "type": "tank", "target": 3, "coins": 0, "pearls": 20, "xp": 200},
+	{"text": "Consigue el acuario Monumental", "type": "tank", "target": 4, "coins": 0, "pearls": 20, "xp": 200},
 ]
 
 ## Diarias: se eligen 3 al día de forma determinista por fecha.
@@ -308,6 +320,12 @@ const NAMES := ["Burbuja", "Coral", "Perla", "Chispa", "Lola", "Rayo", "Canela",
 	"Estrella", "Flan", "Galleta", "Jazmín", "Lima", "Menta", "Nácar", "Ola", "Pompa", "Quino", "Rubí",
 	"Salsa", "Tango", "Uva", "Vainilla", "Yuyu", "Zafiro", "Almendra", "Bruma", "Churro", "Dulce", "Eco",
 	"Fresa", "Gamba", "Hoja", "Iris", "Jade", "Limón", "Mora", "Nemi", "Opal", "Pixel", "Quesito", "Remo"]
+
+
+## Altura del terreno: nº de puntos de control (el jugador los sube o baja en Decorar → Arena).
+const TERRAIN_N := 14
+const TERRAIN_MIN := -0.05            ## fracción del alto de la pecera (cavar)
+const TERRAIN_MAX := 0.26             ## (montaña)
 
 
 static func color(hex: String) -> Color:
