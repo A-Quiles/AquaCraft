@@ -2,6 +2,7 @@ extends Node2D
 ## Escena principal: habitación, mueble, pecera, marco y la interfaz. Gestiona el toque en el agua.
 
 const ROOM := preload("res://shaders/room.gdshader")
+const SHELF_SPACE := 150.0           ## alto reservado sobre la tapa para la estantería de cuidados
 
 enum Mode { NORMAL, FEED, CLEAN, EDIT }
 
@@ -14,11 +15,14 @@ var tank_rect := Rect2()
 var _room: ColorRect
 var _furniture: Node2D
 var _frame: Node2D
+var _props: Node2D
+var prop_rects := {}                 ## nombre → Rect2 de los objetos de la estantería
 var _last_drag := Vector2.INF
 var _drag_idx := -1                  ## decoración que se arrastra en modo Decorar
 var _drag_off := 0.0
 var _drag_from := Vector2.ZERO
 var _drag_moved := false
+var _drag_equip := ""                ## aparato que se arrastra en modo Decorar
 var _feed_cd := 0.0
 var _night := 0.0
 var _night_acc := 999.0
@@ -34,6 +38,10 @@ func _ready() -> void:
 	_furniture = Node2D.new()
 	_furniture.draw.connect(_draw_furniture)
 	add_child(_furniture)
+	_props = Node2D.new()
+	_props.z_index = 61
+	_props.draw.connect(_draw_props)
+	add_child(_props)
 	tank = TankView.new()
 	add_child(tank)
 	_frame = Node2D.new()
@@ -47,6 +55,8 @@ func _ready() -> void:
 	layer.add_child(hud)
 	get_viewport().size_changed.connect(_layout)
 	Game.tank_changed.connect(_layout)
+	Game.changed.connect(_frame.queue_redraw)
+	Game.changed.connect(_props.queue_redraw)
 	_layout()
 	if Game._arg("shot") != "":
 		_screenshot.call_deferred()
@@ -70,6 +80,10 @@ func _screenshot() -> void:
 			tank.selected_decor = 1
 			tank.queue_redraw_top()
 		"equip": hud.open_equipment(open.get_slice(":", 1))
+		"wear":
+			for slot in Game.equipment:
+				Game.equip_cond[slot] = float(open.get_slice(":", 1))
+			Game.tank_changed.emit()
 		"decor": hud.open_decor_menu(0)
 		"tutorial":
 			hud.start_tutorial()
@@ -104,6 +118,8 @@ func _save_shot() -> void:
 
 func _process(dt: float) -> void:
 	_feed_cd = maxf(0.0, _feed_cd - dt)
+	if Game.equipment.light != "" and Game.condition("light") < 30.0:
+		_frame.queue_redraw()
 	_night_acc += dt
 	if _night_acc > 30.0:
 		_night_acc = 0.0
@@ -125,9 +141,12 @@ func _layout() -> void:
 	var stand: float = [96.0, 84.0, 64.0, 40.0][tier]
 	var avail := Rect2(0, top, vp.x, vp.y - top - bottom - stand)
 	# La pecera crece con la pantalla: en móviles altos aprovecha la altura en vez de dejar pared vacía.
-	var w: float = vp.x * [0.8, 0.88, 0.95, 1.0][tier] - (28.0 if tier == 3 else 0.0)
-	var h: float = minf(avail.size.y * [0.62, 0.74, 0.86, 0.95][tier], w * [1.3, 1.25, 1.4, 2.0][tier])
-	var r := Rect2(Vector2((vp.x - w) * 0.5, avail.end.y - h), Vector2(w, h))
+	# Pecera más contenida; el conjunto mueble + pecera se centra en la pantalla en móviles altos.
+	var w: float = vp.x * [0.66, 0.78, 0.9, 1.0][tier] - (28.0 if tier == 3 else 0.0)
+	var h: float = minf(avail.size.y * [0.46, 0.56, 0.7, 0.9][tier], w * [0.95, 0.92, 1.05, 1.7][tier])
+	var bottom_y: float = minf(avail.end.y, avail.position.y + avail.size.y * 0.5 + h * 0.5 + 40.0)
+	h = minf(h, bottom_y - top - SHELF_SPACE)          # deja sitio para la estantería
+	var r := Rect2(Vector2((vp.x - w) * 0.5, bottom_y - h), Vector2(w, h))
 	_room.size = vp
 	_room.material.set_shader_parameter("size", vp)
 	_room.material.set_shader_parameter("tank", Vector4(r.position.x, r.position.y, r.size.x, r.size.y))
@@ -138,13 +157,16 @@ func _layout() -> void:
 		tank.rebuild()
 	_furniture.queue_redraw()
 	_frame.queue_redraw()
+	_props.queue_redraw()
 
 
 func set_mode(m: Mode) -> void:
 	mode = Mode.NORMAL if mode == m else m
 	tank.overlay.sponge_t = 0.0
+	_props.queue_redraw()
 	tank.editing = mode == Mode.EDIT
 	tank.selected_decor = -1
+	tank.selected_equip = ""
 	tank.queue_redraw_top()
 	hud.refresh_mode()
 
@@ -161,6 +183,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			if mode == Mode.EDIT:
 				_end_decor_drag()
 			return
+		var prop := prop_at(event.position)
+		if prop != "":
+			use_prop(prop)
+			return
 		if not inside:
 			return
 		match mode:
@@ -168,18 +194,24 @@ func _unhandled_input(event: InputEvent) -> void:
 				if p.y > 0.0 and _feed_cd <= 0.0 and Game.use_food(food_type):
 					_feed_cd = 0.22
 					tank.food.drop(p.x, food_type)
-					hud.refresh_food()
+					_props.queue_redraw()
 			Mode.CLEAN:
 				_last_drag = p
 				tank.clean_stroke(p)
 			Mode.EDIT:
-				_drag_idx = tank.decor_at(p)
+				# Los aparatos (filtro, termómetro...) se cogen antes que la decoración.
+				var slot := tank.equipment_at(p)
+				_drag_equip = slot if slot != "light" else ""
+				_drag_idx = -1 if _drag_equip != "" else tank.decor_at(p)
+				tank.selected_equip = _drag_equip
 				tank.selected_decor = _drag_idx
 				tank.queue_redraw_top()
-				if _drag_idx >= 0:
+				_drag_from = p
+				_drag_moved = false
+				if _drag_equip != "":
+					_drag_off = tank.equip_x(_drag_equip) * tank.size.x - p.x
+				elif _drag_idx >= 0:
 					_drag_off = Game.decor[_drag_idx].x * tank.size.x - p.x
-					_drag_from = p
-					_drag_moved = false
 			Mode.NORMAL:
 				var a := tank.fish_at(p)
 				var slot := tank.equipment_at(p)
@@ -189,11 +221,14 @@ func _unhandled_input(event: InputEvent) -> void:
 					hud.open_equipment(slot)
 				else:
 					tank.startle(p)
-	elif event is InputEventScreenDrag and mode == Mode.EDIT and _drag_idx >= 0:
+	elif event is InputEventScreenDrag and mode == Mode.EDIT and (_drag_idx >= 0 or _drag_equip != ""):
 		var p := tank.to_local(event.position)
 		if p.distance_to(_drag_from) > 8.0:
 			_drag_moved = true
-		tank.set_decor_x(_drag_idx, p.x + _drag_off)
+		if _drag_equip != "":
+			tank.preview_equip_x(_drag_equip, p.x + _drag_off)
+		else:
+			tank.set_decor_x(_drag_idx, p.x + _drag_off)
 	elif event is InputEventScreenDrag and mode == Mode.CLEAN:
 		var p := tank.to_local(event.position)
 		if not Rect2(Vector2.ZERO, tank.size).has_point(p):
@@ -209,6 +244,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Al soltar: si se movió, se guarda la posición; si fue un toque, se abren sus opciones.
 func _end_decor_drag() -> void:
+	if _drag_equip != "":
+		var slot := _drag_equip
+		_drag_equip = ""
+		if _drag_moved:
+			Game.save_game()
+		else:
+			hud.open_equipment(slot)
+		return
 	if _drag_idx < 0:
 		return
 	var i := _drag_idx
@@ -280,7 +323,7 @@ func _draw_furniture() -> void:
 ## Pared: cuadro con un pez y estante con atrezo, solo si queda sitio sobre la pecera.
 func _draw_wall(ci: Node2D, vp: Vector2, r: Rect2) -> void:
 	var top := Hud.safe_margins().x + 200.0
-	var space := r.position.y - 40.0 - top
+	var space := r.position.y - SHELF_SPACE - top
 	if space < 150.0:
 		return
 	# Cuadro
@@ -300,30 +343,96 @@ func _draw_wall(ci: Node2D, vp: Vector2, r: Rect2) -> void:
 		ci.draw_arc(fc + b, 4.0, 0, TAU, 12, Color(1, 1, 1, 0.9), 1.6, true)
 	DecorArt.blade(ci, art.position + Vector2(14, art.size.y), 46, 7, 6, Color("2e7d4f"), Color("6fcf8a"), 6)
 	DecorArt.blade(ci, art.position + Vector2(22, art.size.y), 34, 6, -5, Color("2e7d4f"), Color("8fe3a0"), 6)
-	if space < 270.0:
-		return
-	# Estante con cactus, bote de comida y una pecerita redonda
-	var sy := r.position.y - 70.0
-	var sx := vp.x * 0.6
-	ci.draw_rect(Rect2(sx, sy + 4, 240, 16), Color(0, 0, 0, 0.18))
-	ci.draw_rect(Rect2(sx, sy, 240, 14), Color("b07a4f"))
-	ci.draw_rect(Rect2(sx, sy + 10, 240, 4), Color("8a5a36"))
-	var pot := sx + 34.0
-	ci.draw_colored_polygon(PackedVector2Array([Vector2(pot - 18, sy - 30), Vector2(pot + 18, sy - 30), Vector2(pot + 13, sy), Vector2(pot - 13, sy)]), Color("e07a5f"))
-	ci.draw_colored_polygon(DecorArt.ell(Vector2(pot, sy - 52), 13, 24), Color("5fae6e"))
-	ci.draw_colored_polygon(DecorArt.ell(Vector2(pot - 15, sy - 50), 6, 10), Color("6fbf7e"))
-	var jar := Rect2(sx + 78, sy - 56, 40, 56)
-	ci.draw_rect(jar, Color("ff8a3d"))
-	ci.draw_rect(Rect2(jar.position + Vector2(-3, -10), Vector2(46, 12)), Color("2a9d8f"))
-	ci.draw_rect(Rect2(jar.position + Vector2(6, 18), Vector2(28, 20)), Color("fff3df"))
-	ci.draw_circle(jar.position + Vector2(20, 28), 6, Color("ffb347"))
-	var bowl := Vector2(sx + 180, sy - 34)
-	ci.draw_circle(bowl, 34, Color(0.75, 0.95, 1.0, 0.35))
-	ci.draw_circle(bowl + Vector2(0, 6), 28, Color(0.35, 0.78, 0.9, 0.6))
-	ci.draw_colored_polygon(PackedVector2Array([bowl + Vector2(-6, 8), bowl + Vector2(-16, 1), bowl + Vector2(-16, 15)]), Color("ff7a3d"))
-	ci.draw_colored_polygon(DecorArt.ell(bowl + Vector2(4, 8), 11, 7), Color("ff9a3a"))
-	ci.draw_arc(bowl, 34, PI * 1.15, PI * 1.6, 12, Color(1, 1, 1, 0.6), 3.0, true)
-	ci.draw_rect(Rect2(bowl + Vector2(-20, -36), Vector2(40, 6)), Color(0.85, 0.97, 1.0, 0.5))
+
+
+# ───────────────────────── Estantería de cuidados ─────────────────────────
+
+func prop_at(p: Vector2) -> String:
+	for k in prop_rects:
+		if (prop_rects[k] as Rect2).grow(6.0).has_point(p):
+			return k
+	return ""
+
+
+## Coger/soltar un objeto de la estantería: botes de comida, limpiador o productos.
+func use_prop(k: String) -> void:
+	if k == "sponge":
+		set_mode(Mode.CLEAN)
+	elif k.begins_with("food:"):
+		var id := k.substr(5)
+		if id != "escamas" and int(Game.food.get(id, 0)) <= 0:
+			hud.show_toast("No te queda %s. Cómpralo en la tienda." % Catalog.FOODS[id].name.to_lower(), "food")
+			return
+		if mode == Mode.FEED and food_type == id:
+			set_mode(Mode.FEED)
+		else:
+			food_type = id
+			mode = Mode.NORMAL
+			set_mode(Mode.FEED)
+	elif k.begins_with("prod:"):
+		hud.open_product(k.substr(5))
+
+
+func _draw_props() -> void:
+	var ci := _props
+	prop_rects.clear()
+	var r := tank_rect
+	var vp := get_viewport_rect().size
+	var sy := r.position.y - 46.0               # balda justo encima de la tapa
+	var sw := minf(vp.x - 20.0, maxf(r.size.x + 40.0, 600.0))
+	var sx := (vp.x - sw) * 0.5
+	ci.draw_rect(Rect2(sx + 4, sy + 6, sw, 14), Color(0, 0, 0, 0.2))
+	ci.draw_rect(Rect2(sx, sy, sw, 14), Color("b07a4f"))
+	ci.draw_rect(Rect2(sx, sy + 10, sw, 4), Color("8a5a36"))
+	var items: Array = ["sponge"]
+	for f in Catalog.FOOD_ORDER:
+		items.append("food:" + f)
+	for p in Catalog.PRODUCT_ORDER:
+		items.append("prod:" + p)
+	var step := sw / items.size()
+	var font := UI.bold
+	for i in items.size():
+		var k: String = items[i]
+		var cx := sx + step * (i + 0.5)
+		var lifted := (k == "sponge" and mode == Mode.CLEAN) or (k == "food:" + food_type and mode == Mode.FEED)
+		var base := Vector2(cx, sy - (14.0 if lifted else 0.0))
+		if lifted:
+			ci.draw_circle(base + Vector2(0, -32), 40, Color(1.0, 0.9, 0.5, 0.25))
+		if k == "sponge":
+			# Limpiacristales magnético: asa + esponja.
+			var b := Rect2(base + Vector2(-30, -34), Vector2(60, 34))
+			ci.draw_rect(Rect2(b.position + Vector2(0, 12), Vector2(60, 22)), Color("ffd34d"))
+			for h in [Vector2(-18, -10), Vector2(-2, -6), Vector2(14, -12), Vector2(22, -4)]:
+				ci.draw_circle(base + h, 2.6, Color("e0a92c"))
+			ci.draw_rect(Rect2(b.position + Vector2(0, 4), Vector2(60, 9)), Color("2e9e6a"))
+			ci.draw_rect(Rect2(b.position + Vector2(14, -6), Vector2(32, 10)), Color("3a4552"))
+			prop_rects[k] = b.grow(4)
+		elif k.begins_with("food:"):
+			var id := k.substr(5)
+			var col := Catalog.color(Catalog.FOODS[id].col)
+			var jar := Rect2(base + Vector2(-20, -54), Vector2(40, 54))
+			ci.draw_rect(jar, Color(0.95, 0.97, 1.0, 0.55))
+			ci.draw_rect(Rect2(jar.position + Vector2(3, 18), Vector2(34, 33)), col.darkened(0.1))
+			ci.draw_rect(Rect2(jar.position + Vector2(-2, -8), Vector2(44, 10)), col.darkened(0.45))
+			ci.draw_rect(Rect2(jar.position + Vector2(6, 22), Vector2(28, 16)), Color("fff3df"))
+			var n := "∞" if id == "escamas" else str(Game.food.get(id, 0))
+			ci.draw_string(font, jar.position + Vector2(0, 35), n, HORIZONTAL_ALIGNMENT_CENTER, 40, 15, UI.NAVY)
+			ci.draw_rect(Rect2(jar.position + Vector2(4, 2), Vector2(4, 14)), Color(1, 1, 1, 0.5))
+			prop_rects[k] = jar.grow(4)
+		else:
+			var id := k.substr(5)
+			var pr: Dictionary = Catalog.PRODUCTS[id]
+			var col := Catalog.color(pr.col)
+			var bot := Rect2(base + Vector2(-15, -44), Vector2(30, 44))
+			ci.draw_rect(bot, col)
+			ci.draw_rect(Rect2(bot.position + Vector2(8, -14), Vector2(14, 14)), Color("eeeeee"))
+			ci.draw_rect(Rect2(bot.position + Vector2(10, -22), Vector2(10, 9)), col.darkened(0.4))
+			ci.draw_rect(Rect2(bot.position + Vector2(3, 12), Vector2(24, 16)), Color("fffaf2"))
+			ci.draw_string(font, bot.position + Vector2(0, 25), pr.short, HORIZONTAL_ALIGNMENT_CENTER, 30, 12, UI.NAVY)
+			var cnt: int = Game.products.get(id, 0)
+			ci.draw_circle(bot.end + Vector2(-2, -42), 10, UI.NAVY if cnt > 0 else UI.BAD)
+			ci.draw_string(font, bot.end + Vector2(-12, -37), str(cnt), HORIZONTAL_ALIGNMENT_CENTER, 20, 13, Color.WHITE)
+			prop_rects[k] = Rect2(bot.position + Vector2(0, -22), bot.size + Vector2(0, 22)).grow(4)
 
 
 func _draw_frame() -> void:
@@ -334,7 +443,13 @@ func _draw_frame() -> void:
 	var lid := Rect2(r.position.x - 10, r.position.y - 30, r.size.x + 20, 30)
 	ci.draw_rect(lid, dark)
 	ci.draw_rect(Rect2(lid.position, Vector2(lid.size.x, 6)), dark.lightened(0.2))
-	var led := 1.0 if Game.equipment.light != "" else 0.6
+	var led := 0.6
+	if Game.equipment.light != "":
+		# Se apaga poco a poco y parpadea cuando la tapa está muy sucia.
+		var eff := Game.efficiency("light")
+		led = lerpf(0.35, 1.0, eff)
+		if Game.condition("light") < 30.0 and fmod(Time.get_ticks_msec() / 90.0, 7.0) < 1.0:
+			led *= 0.3
 	ci.draw_rect(Rect2(r.position.x + 12, r.position.y - 6, r.size.x - 24, 4), Color(0.85, 1.0, 1.0, 0.9 * led))
 	for k in 4:
 		ci.draw_rect(Rect2(r.position.x + 12, r.position.y - 2 + k * 3, r.size.x - 24, 3), Color(0.7, 1.0, 1.0, 0.12 * led * (1.0 - k / 4.0)))

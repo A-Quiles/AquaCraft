@@ -72,9 +72,13 @@ func _ready() -> void:
 	tw.tween_property(panel, "position:y", get_viewport_rect().size.y * panel.anchor_top, 0.3).from(get_viewport_rect().size.y)
 
 
+var closing := false
+
+
 func close() -> void:
-	if is_queued_for_deletion():
+	if is_queued_for_deletion() or closing:
 		return
+	closing = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var tw := create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
 	tw.tween_property(_dim, "color:a", 0.0, 0.2)

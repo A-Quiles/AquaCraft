@@ -43,9 +43,13 @@ func _ready() -> void:
 	_card.resized.connect(func(): _card.pivot_offset = _card.size * 0.5)
 
 
+var closing := false
+
+
 func close() -> void:
-	if is_queued_for_deletion():
+	if is_queued_for_deletion() or closing:
 		return
+	closing = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var tw := create_tween().set_parallel()
 	tw.tween_property(_dim, "color:a", 0.0, 0.15)

@@ -12,8 +12,6 @@ var _bar := {}                       ## clave → Button
 var _mission_dot: Control
 var _hint: PanelContainer
 var _hint_label: Label
-var _food_row: HBoxContainer
-var _food_buttons := {}
 var _sheet: Control
 var _modal: Modal
 var _temp_alarm := false
@@ -148,28 +146,23 @@ func _build_bottom() -> void:
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	m.add_child(v)
 
+	# Aviso del modo activo con botón para soltar la herramienta (bote de comida, esponja...).
 	_hint = PanelContainer.new()
 	_hint.add_theme_stylebox_override("panel", _glass())
 	_hint.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_hint_label = UI.label("", 22, Color.WHITE, UI.bold)
-	_hint.add_child(_hint_label)
+	var hh := UI.hbox(12)
+	_hint_label = UI.wrap(UI.label("", 21, Color.WHITE, UI.bold))
+	_hint_label.custom_minimum_size.x = 430
+	hh.add_child(_hint_label)
+	var done := UI.button("Listo", UI.CORAL, UI.CORAL_D)
+	done.add_theme_font_size_override("font_size", 21)
+	done.pressed.connect(func(): main.set_mode(main.mode))
+	hh.add_child(done)
+	_hint.add_child(hh)
 	v.add_child(_hint)
 
-	_food_row = UI.hbox(10)
-	_food_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	for id in Catalog.FOOD_ORDER:
-		var b := UI.button("")
-		b.custom_minimum_size = Vector2(200, 60)
-		b.pressed.connect(func():
-			main.food_type = id
-			refresh_food())
-		_food_row.add_child(b)
-		_food_buttons[id] = b
-	v.add_child(_food_row)
-
 	var bar := UI.hbox(8)
-	for it in [["feed", "food", "Comida"], ["clean", "sponge", "Limpiar"], ["edit", "plant", "Decorar"],
-			["shop", "shop", "Tienda"], ["fish", "fish", "Peces"], ["missions", "missions", "Misiones"]]:
+	for it in [["edit", "plant", "Decorar"], ["shop", "shop", "Tienda"], ["fish", "fish", "Peces"], ["missions", "missions", "Misiones"]]:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -179,10 +172,10 @@ func _build_bottom() -> void:
 		col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		col.offset_top = 8
 		col.alignment = BoxContainer.ALIGNMENT_CENTER
-		var ic := VIcon.make(it[1], 50)
+		var ic := VIcon.make(it[1], 54)
 		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		col.add_child(ic)
-		var l := UI.label(it[2], 18, UI.NAVY, UI.bold)
+		var l := UI.label(it[2], 20, UI.NAVY, UI.bold)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(l)
 		b.add_child(col)
@@ -209,8 +202,6 @@ func _style_bar(b: Button, active: bool) -> void:
 
 func _on_bar(k: String) -> void:
 	match k:
-		"feed": main.set_mode(main.Mode.FEED)
-		"clean": main.set_mode(main.Mode.CLEAN)
 		"edit": main.set_mode(main.Mode.EDIT)
 		"shop": open_shop(0)
 		"fish": open_fish(-1)
@@ -218,28 +209,13 @@ func _on_bar(k: String) -> void:
 
 
 func refresh_mode() -> void:
-	_style_bar(_bar.feed, main.mode == main.Mode.FEED)
-	_style_bar(_bar.clean, main.mode == main.Mode.CLEAN)
 	_style_bar(_bar.edit, main.mode == main.Mode.EDIT)
 	for k in ["shop", "fish", "missions"]:
 		_style_bar(_bar[k], false)
-	_food_row.visible = main.mode == main.Mode.FEED
 	_hint.visible = main.mode != main.Mode.NORMAL
-	_hint_label.text = {main.Mode.FEED: "Toca el agua para echar comida",
-		main.Mode.CLEAN: "Desliza el dedo por el cristal para quitar las algas",
-		main.Mode.EDIT: "Arrastra una pieza para moverla · tócala para más opciones"}.get(main.mode, "")
-	refresh_food()
-
-
-func refresh_food() -> void:
-	for id in _food_buttons:
-		var b: Button = _food_buttons[id]
-		var n := "∞" if id == "escamas" else str(Game.food.get(id, 0))
-		b.text = "%s  %s" % [Catalog.FOODS[id].name.split(" ")[0], n]
-		var on: bool = main.food_type == id
-		UI.button_colors(b, UI.CORAL if on else Color("fffaf2"), UI.CORAL_D if on else Color("d9ccb8"))
-		b.add_theme_color_override("font_color", Color.WHITE if on else UI.NAVY)
-		b.add_theme_color_override("font_hover_color", Color.WHITE if on else UI.NAVY)
+	_hint_label.text = {main.Mode.FEED: "Toca el agua para echar %s" % Catalog.FOODS[main.food_type].name.to_lower(),
+		main.Mode.CLEAN: "Frota el cristal con el limpiador para quitar las algas",
+		main.Mode.EDIT: "Arrastra plantas, adornos o aparatos · tócalos para más opciones"}.get(main.mode, "")
 
 
 func refresh() -> void:
@@ -365,10 +341,10 @@ func _show_modal(m: Modal) -> void:
 
 ## Botón atrás de Android: cierra lo que haya abierto. Devuelve true si cerró algo.
 func back() -> bool:
-	if _modal and is_instance_valid(_modal) and not _modal.is_queued_for_deletion():
+	if _modal and is_instance_valid(_modal) and not _modal.closing:
 		_modal.close()
 		return true
-	if _sheet and is_instance_valid(_sheet) and not _sheet.is_queued_for_deletion():
+	if _sheet and is_instance_valid(_sheet) and not _sheet.get("closing"):
 		_sheet.close()
 		return true
 	return false
@@ -514,6 +490,39 @@ func open_salinity() -> void:
 	m.box.add_child(_hold_button("Mantén pulsado: reponer agua dulce", func():
 		Game.top_up()
 		m.close()))
+	_show_modal(m)
+
+
+## Producto de la estantería: qué hace, cuánto queda y cómo está el agua ahora.
+func open_product(id: String) -> void:
+	var pr: Dictionary = Catalog.PRODUCTS[id]
+	var m := Modal.new()
+	m.centered(VIcon.make("ph" if id != "antialgas" else "sparkle", 64))
+	m.centered(UI.title(pr.name, 38))
+	m.box.add_child(_center_label(pr.desc, 22))
+	var w := Game.water()
+	var info := "Ahora: pH %.2f · cristal limpio al %d%%" % [w.ph, roundi(100.0 - w.dirt)]
+	var seen := {}
+	for f in Game.fish:
+		var sp: Dictionary = Catalog.SPECIES[f.genes.sp]
+		if not seen.has(sp.name):
+			seen[sp.name] = true
+			info += "\n%s: pH %.1f–%.1f" % [sp.name, sp.ph[0], sp.ph[1]]
+	m.box.add_child(_center_label(info, 21, UI.NAVY))
+	var n: int = Game.products.get(id, 0)
+	var use := UI.button("Echar al agua (te quedan %d)" % n, UI.TEAL, UI.TEAL_D)
+	use.custom_minimum_size.y = 68
+	use.disabled = n <= 0
+	use.pressed.connect(func():
+		Game.use_product(id)
+		m.close())
+	m.box.add_child(use)
+	var buy := UI.price_button(pr.price, "coins", "+%d" % pr.pack)
+	buy.pressed.connect(func():
+		Game.buy_product(id)
+		m.close()
+		open_product(id))
+	m.box.add_child(buy)
 	_show_modal(m)
 
 

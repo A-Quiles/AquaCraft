@@ -32,10 +32,13 @@ func drop(x: float, type: String) -> void:
 	tank.overlay.ripple(Vector2(x, 10.0))
 
 
-func nearest(p: Vector2) -> Flake:
+## Trozo más cercano de un alimento que este pez come (diet vacío = cualquiera).
+func nearest(p: Vector2, diet: Array = []) -> Flake:
 	var best: Flake = null
 	var bd := INF
 	for f in flakes:
+		if not diet.is_empty() and not f.type in diet:
+			continue
 		var d := p.distance_squared_to(f.pos)
 		if d < bd:
 			bd = d
@@ -55,7 +58,7 @@ func _process(dt: float) -> void:
 		var f := flakes[i]
 		f.age += dt
 		if f.landed < 0.0:
-			var sink := 46.0 if f.type == "granulos" else (20.0 if f.type == "artemia" else 26.0)
+			var sink: float = {"granulos": 46.0, "artemia": 20.0, "nori": 16.0}.get(f.type, 26.0)
 			f.vel.y = move_toward(f.vel.y, sink, dt * 20.0)
 			f.vel.x = sin(f.age * 2.3 + f.rot) * 12.0
 			f.pos += f.vel * dt
@@ -83,6 +86,9 @@ func _draw() -> void:
 			"granulos":
 				draw_circle(f.pos, 4.0, c.darkened(0.25))
 				draw_circle(f.pos + Vector2(-1, -1), 2.6, c)
+			"nori":
+				draw_rect(Rect2(f.pos - Vector2(4, 3), Vector2(8, 6)), c)
+				draw_rect(Rect2(f.pos - Vector2(2, 1), Vector2(3, 2)), c.lightened(0.25))
 			"artemia":
 				var d := Vector2.from_angle(f.rot) * 3.5
 				draw_line(f.pos - d, f.pos + d, c, 2.4, true)

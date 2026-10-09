@@ -156,10 +156,11 @@ void fragment() {
 		}
 		float d_tail = max(abs(yy) - hh, (tx - tip) * tl);
 		float a_tail = fill(d_tail) * step(-0.25, tx);
-		float rays = 0.5 + 0.5 * sin(atan(yy, tx * tl + 0.05) * 46.0);
-		vec3 tc = mix(bodyc * 0.9, fin_c, smoothstep(0.0, 0.4, tx)) * (0.9 + 0.12 * rays);
-		tc += vec3(0.16) * smoothstep(0.75, 1.0, tx / max(tip, 0.01));
-		acc = over(vec4(tc, a_tail * mix(0.92, 0.72, k)), acc);
+		// Radios marcados y membrana translúcida entre ellos, borde más claro.
+		float rays = pow(0.5 + 0.5 * sin(atan(yy, tx * tl + 0.05) * 44.0), 3.0);
+		vec3 tc = mix(bodyc * 0.9, fin_c, smoothstep(0.0, 0.35, tx)) * (0.86 + 0.24 * rays);
+		tc += vec3(0.2) * smoothstep(0.82, 1.0, tx / max(tip, 0.01));
+		acc = over(vec4(tc, a_tail * mix(0.95, 0.62, k) * (0.82 + 0.18 * rays)), acc);
 	}
 
 	// ── Aletas dorsales (se inclinan hacia atrás con la altura) ──
@@ -248,20 +249,35 @@ void fragment() {
 	}
 	vec3 bc = albinize(mix(base, col_pat, pm));
 
-	// Contrasombreado, escamas, brillo, opérculo y contorno.
-	bc = mix(bc * 1.15 + 0.07, bc, smoothstep(-0.95, 0.05, dy));
-	bc *= mix(1.0, 0.74, smoothstep(0.4, 1.0, dy));
-	vec2 ss = q * vec2(58.0, 66.0);
-	ss.x += mod(floor(ss.y), 2.0) * 0.5;
-	float scl = smoothstep(0.5, 0.32, length((fract(ss) - 0.5) * vec2(1.0, 1.25)));
-	float scl_w = clamp(1.0 - fwidth(q.x) * 70.0, 0.0, 1.0) * smoothstep(0.55, -0.2, dx);
-	bc *= 1.0 + (scl - 0.5) * 0.09 * scl_w;
-	bc += vec3(1.0) * exp(-pow((dy - 0.5) * 3.2, 2.0)) * smoothstep(-0.75, 0.35, dx) * 0.24;
-	float gx = eye_t - 0.12;
-	float gill = abs(q.x - (xs + L * gx) - 0.04 * dy * dy);
-	bc *= 1.0 - 0.14 * smoothstep(0.012, 0.0, gill) * step(abs(dy), 0.8);
-	bc *= 1.0 - 0.24 * smoothstep(0.3, 0.0, inner);
-	bc = mix(bc, bc * 0.45, smoothstep(0.07, 0.0, inner) * 0.7);
+	// Volumen: el cuerpo es un óvalo en sección; luz desde arriba y de frente.
+	float nz = sqrt(max(0.0, 1.0 - dy * dy));
+	float lambert = clamp(0.62 * dy + 0.7 * nz + 0.1, 0.0, 1.0);
+	bc = mix(bc * 1.12 + 0.06, bc, smoothstep(-0.95, 0.05, dy));          // vientre más claro (contrasombreado)
+	bc *= mix(0.62, 1.08, lambert);
+	// Escamas romboidales con borde oscuro y reflejo en el centro (se desvanecen en peces pequeños).
+	vec2 sc = vec2(q.x * 52.0 + q.y * 26.0, q.y * 60.0 - q.x * 20.0);
+	sc.x += mod(floor(sc.y), 2.0) * 0.5;
+	vec2 sf = fract(sc) - 0.5;
+	float scl_edge = smoothstep(0.32, 0.48, max(abs(sf.x), abs(sf.y) * 1.1));
+	float scl_w = clamp(1.0 - fwidth(q.x) * 60.0, 0.0, 1.0) * smoothstep(0.62, -0.15, dx) * smoothstep(-1.0, -0.6, dy);
+	bc *= 1.0 - scl_edge * 0.12 * scl_w;
+	bc += vec3(1.0) * (1.0 - scl_edge) * 0.04 * scl_w * lambert;
+	// Iridiscencia suave que cambia con el movimiento.
+	vec3 iri = 0.5 + 0.5 * cos(6.2832 * (dy * 0.8 + dx * 0.3 + tt * 0.05 + vec3(0.0, 0.33, 0.67)));
+	bc += iri * 0.05 * smoothstep(-0.2, 0.6, dy) * scl_w;
+	// Brillo especular del lomo y línea lateral.
+	bc += vec3(1.0) * exp(-pow((dy - 0.55) * 3.4, 2.0)) * smoothstep(-0.75, 0.35, dx) * 0.22;
+	float ll = abs(dy - (0.18 + 0.12 * dx));
+	bc *= 1.0 - 0.07 * smoothstep(0.03, 0.0, ll) * step(-0.85, dx) * step(dx, eye_t * 2.0 - 1.25) * (0.6 + 0.4 * step(0.5, fract(q.x * 40.0)));
+	// Opérculo (tapa de las branquias): sombra en media luna con borde claro.
+	float gx = xs + L * (eye_t - 0.13);
+	float gd = q.x - gx - 0.05 * dy * dy;
+	bc *= 1.0 - 0.16 * smoothstep(0.0, -0.04, gd) * smoothstep(-0.08, -0.02, gd) * step(abs(dy), 0.85);
+	bc += vec3(0.08) * smoothstep(0.008, 0.0, abs(gd)) * step(abs(dy), 0.8);
+	// Borde: oscurece hacia el contorno y luz de contorno arriba (piel fina a contraluz).
+	bc *= 1.0 - 0.22 * smoothstep(0.28, 0.0, inner);
+	bc += vec3(0.95, 1.0, 1.0) * smoothstep(0.12, 0.0, inner) * smoothstep(0.2, 0.9, dy) * 0.18;
+	bc = mix(bc, bc * 0.45, smoothstep(0.06, 0.0, inner) * 0.55 * (1.0 - smoothstep(0.2, 0.9, dy)));
 	bc += col_pat * neon * 0.38 * (0.75 + 0.25 * sin(TIME * 2.2 + seed * 5.0)) * (pm + 0.35);
 
 	// Ojo
@@ -271,9 +287,13 @@ void fragment() {
 	vec2 ec = vec2(xs + L * et, mix((etop + ebot) * 0.5, etop, 0.32));
 	float er = clamp((etop - ebot) * 0.11, 0.024, 0.06);
 	float de = length(q - ec);
-	vec3 iris = mix(vec3(0.95, 0.8, 0.35), vec3(0.08, 0.06, 0.05), smoothstep(er * 0.5, er * 0.95, de));
-	vec3 eye = mix(mix(vec3(0.04), vec3(0.85, 0.12, 0.2), albino), iris, smoothstep(er * 0.56, er * 0.66, de));
-	eye = mix(eye, vec3(1.0), fill(length(q - ec - vec2(-er * 0.25, er * 0.32)) - er * 0.26));
+	float ang_e = atan(q.y - ec.y, q.x - ec.x);
+	vec3 iris = mix(vec3(0.98, 0.82, 0.38), vec3(0.55, 0.32, 0.1), 0.5 + 0.5 * sin(ang_e * 14.0));
+	iris = mix(iris, vec3(0.06, 0.05, 0.04), smoothstep(er * 0.55, er * 0.98, de));
+	vec3 eye = mix(mix(vec3(0.02), vec3(0.85, 0.12, 0.2), albino), iris, smoothstep(er * 0.5, er * 0.6, de));
+	eye = mix(eye, vec3(1.0), fill(length(q - ec - vec2(-er * 0.28, er * 0.3)) - er * 0.24));
+	eye = mix(eye, vec3(1.0), fill(length(q - ec - vec2(er * 0.25, -er * 0.25)) - er * 0.09) * 0.7);
+	bc *= 1.0 - 0.3 * fill(de - er * 1.35) * (1.0 - fill(de - er));      // cuenca del ojo
 	bc = mix(bc, eye, fill(de - er));
 	// Boca
 	float my = (top_at(0.985) + bot_at(0.985)) * 0.5 - 0.004;

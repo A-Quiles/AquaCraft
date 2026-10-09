@@ -92,6 +92,10 @@ func _process(delta: float) -> bool:
 			hud.open_setup()
 			hud.open_mode_picker()
 			hud.open_salinity()
+			hud.open_product("antialgas")
+			main.use_prop("food:artemia")
+			main.use_prop("sponge")
+			main.use_prop("prod:ph_up")
 			game.set_game_mode("realista")
 			hud.open_shop(1)
 			for i in 4:

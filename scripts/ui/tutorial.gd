@@ -5,14 +5,14 @@ extends Control
 
 const STEPS := [
 	{"text": "¡Hola! Te enseño lo básico en un minuto: alimentar, limpiar, mantener el equipo, criar y decorar.", "wait": "button", "button": "¡Vamos!"},
-	{"text": "Tus peces tienen hambre (mira el bocadillo). Pulsa «Comida».", "target": "bar:feed", "wait": "mode_feed"},
-	{"text": "Toca el agua para echar escamas. Lo que no se coman se pudre y ensucia.", "target": "tank", "wait": "fed"},
-	{"text": "Con el tiempo salen algas en el cristal, poco a poco. Pulsa «Limpiar»…", "target": "bar:clean", "wait": "mode_clean", "care": true},
+	{"text": "Tus peces tienen hambre: el bocadillo dice qué comida quieren. Coge el bote de escamas de la estantería.", "target": "prop:food:escamas", "wait": "mode_feed"},
+	{"text": "Toca el agua para echar escamas. Ojo: algunos peces solo comen un alimento, y lo que sobra se pudre y ensucia.", "target": "tank", "wait": "fed"},
+	{"text": "Con el tiempo salen algas en el cristal, poco a poco. Coge el limpiacristales de la estantería…", "target": "prop:sponge", "wait": "mode_clean", "care": true},
 	{"text": "…y frota el cristal con el dedo hasta que brille.", "target": "tank", "wait": "cleaned", "care": true},
 	{"text": "Cada aparato se desgasta y necesita mantenimiento. Tu filtro está sucio: tócalo y mantén pulsado el botón.", "target": "equip:filter", "wait": "maint", "care": true},
-	{"text": "Para criar, abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
+	{"text": "En la estantería también tienes reguladores de pH y antialgas. Ahora, para criar, abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
 	{"text": "Dos adultos de la misma especie, sanos y felices, ponen un huevo. Las crías heredan colores, patrón y mutaciones: ¡los raros valen mucho más!", "wait": "button", "button": "Entendido"},
-	{"text": "Por último, pulsa «Decorar»: arrastra plantas y adornos donde quieras y tócalos para voltearlos o cambiarlos de capa.", "target": "bar:edit", "wait": "mode_edit"},
+	{"text": "Por último, pulsa «Decorar»: arrastra plantas, adornos y también los aparatos (filtro, termómetro…) donde quieras.", "target": "bar:edit", "wait": "mode_edit"},
 	{"text": "¡Listo! Las misiones te irán guiando. Disfruta de tu acuario.", "wait": "button", "button": "¡A bucear!"},
 ]
 
@@ -24,11 +24,18 @@ var _base := 0.0
 var _card: PanelContainer
 var _text: Label
 var _next: Button
+var _blockers: Array[Control] = []
+var _modal_open := false   ## 4 franjas que bloquean los toques fuera del hueco
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for i in 4:
+		var b := Control.new()
+		b.mouse_filter = Control.MOUSE_FILTER_STOP
+		add_child(b)
+		_blockers.append(b)
 	_card = UI.card(UI.CREAM, 30)
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	var v := UI.vbox(12)
@@ -59,13 +66,25 @@ func _advance() -> void:
 		_finish()
 		return
 	var s: Dictionary = STEPS[step]
+	_tidy(s)
 	_text.text = s.text
 	_next.visible = s.wait == "button"
 	_next.text = s.get("button", "")
 	_base = _progress(s.wait)
 
 
+## Deja la pantalla lista para el paso: sin modos activos que no tocan y sin hojas tapando el objetivo.
+func _tidy(s: Dictionary) -> void:
+	if not s.wait in ["fed", "cleaned"] and main.mode != main.Mode.NORMAL:
+		main.set_mode(main.mode)
+	if s.has("target"):
+		while hud.back():
+			pass
+
+
 func _finish() -> void:
+	if main.mode != main.Mode.NORMAL:
+		main.set_mode(main.mode)
 	Game.started = true
 	Game.save_game()
 	queue_free()
@@ -105,10 +124,24 @@ func _process(_dt: float) -> void:
 	_card.reset_size()
 	var y := 230.0 if _hole.size == Vector2.ZERO or _hole.get_center().y > vp.y * 0.5 else vp.y - _card.size.y - 330.0
 	_card.position = Vector2((vp.x - _card.size.x) * 0.5, y + Hud.safe_margins().x)
+	# Si el jugador está usando una ventana (p. ej. el mantenimiento), le dejamos hacerlo.
+	_modal_open = hud._modal != null and is_instance_valid(hud._modal) and not hud._modal.closing
+	var rects: Array = [Rect2(Vector2.ZERO, vp), Rect2(), Rect2(), Rect2()]
+	if _modal_open:
+		rects[0] = Rect2()
+	elif _hole.size != Vector2.ZERO:
+		var h := _hole.grow(6.0)
+		rects = [Rect2(0, 0, vp.x, h.position.y), Rect2(0, h.end.y, vp.x, vp.y - h.end.y),
+			Rect2(0, h.position.y, h.position.x, h.size.y), Rect2(h.end.x, h.position.y, vp.x - h.end.x, h.size.y)]
+	for i in 4:
+		_blockers[i].position = rects[i].position
+		_blockers[i].size = rects[i].size
 	queue_redraw()
 
 
 func _target_rect(t: String) -> Rect2:
+	if t.begins_with("prop:") and main.prop_rects.has(t.substr(5)):
+		return main.prop_rects[t.substr(5)]
 	if t.begins_with("bar:"):
 		return (hud._bar[t.substr(4)] as Control).get_global_rect()
 	var tank: TankView = main.tank
@@ -121,6 +154,8 @@ func _target_rect(t: String) -> Rect2:
 
 
 func _draw() -> void:
+	if _modal_open:
+		return
 	var vp := get_viewport_rect().size
 	var dim := Color(0.02, 0.06, 0.1, 0.55)
 	if _hole.size == Vector2.ZERO:

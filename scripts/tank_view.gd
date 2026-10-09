@@ -39,6 +39,7 @@ var _decor_nodes: Array = []
 var equip_rects := {}                ## hueco → Rect2 local (para tocar y avisos)
 var editing := false                 ## modo Decorar
 var selected_decor := -1
+var selected_equip := ""
 
 
 func _ready() -> void:
@@ -170,7 +171,7 @@ func set_night(n: float) -> void:
 
 
 func _process(_dt: float) -> void:
-	if editing or not Game.needs_maintenance().is_empty():
+	if editing or not Game.needs_maintenance().is_empty() or Game.equipment.thermo == "digital":
 		_top.queue_redraw()
 	if not Game.eggs.is_empty():
 		_eggs.queue_redraw()
@@ -300,6 +301,12 @@ func queue_redraw_top() -> void:
 	_top.queue_redraw()
 
 
+## Mueve un aparato mientras se arrastra (modo Decorar).
+func preview_equip_x(slot: String, x: float) -> void:
+	Game.equip_pos[slot] = clampf(x / size.x, 0.04, 0.96)
+	_equip.queue_redraw()
+
+
 ## Decoración bajo el dedo (la de delante primero). -1 si no hay.
 func decor_at(p: Vector2) -> int:
 	var best := -1
@@ -378,67 +385,109 @@ func _fade_ramp() -> Gradient:
 	return g
 
 
+const EQUIP_X := {"pump": 0.08, "heater": 0.05, "esponja": 0.92, "mochila": 0.84, "skimmer": 0.88, "canister": 0.9,
+	"tira": 0.94, "digital": 0.86, "ato": 0.6}
+
+
+## Posición x (0..1) de un aparato: la que eligió el jugador o la de fábrica.
+func equip_x(slot: String) -> float:
+	var id: String = Game.equipment.get(slot, "")
+	return Game.equip_pos.get(slot, EQUIP_X.get(slot, EQUIP_X.get(id, 0.5)))
+
+
+## Suciedad visible: manchas pardas y verdes que crecen con el desgaste (determinista: no parpadea).
+func _grime(ci: CanvasItem, r: Rect2, amount: float, sd: int) -> void:
+	if amount <= 0.02:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = sd
+	for i in int(4 + amount * 22):
+		var p := r.position + Vector2(rng.randf(), rng.randf()) * r.size
+		var rad := rng.randf_range(1.5, 5.0) * (0.6 + amount)
+		var col := Color(0.35, 0.28, 0.12, 0.75) if rng.randf() < 0.6 else Color(0.3, 0.45, 0.15, 0.7)
+		if rng.randf() < amount * 1.3:
+			ci.draw_circle(p, rad, col)
+	ci.draw_rect(r, Color(0.3, 0.25, 0.1, 0.35 * amount))
+
+
 func _draw_equipment() -> void:
 	var ci := _equip
 	var e: Dictionary = Game.equipment
 	var u := decor_scale()
 	equip_rects.clear()
 	equip_rects["light"] = Rect2(0, -34, size.x, 34)
-	var grime := Color(0.36, 0.3, 0.16)
+	var wear := func(slot: String) -> float: return clampf(1.0 - Game.condition(slot) / 100.0, 0.0, 1.0)
 	if e.pump != "":
-		var p := Vector2(size.x * 0.08, surface_y(size.x * 0.08) - 4.0)
+		var x := equip_x("pump") * size.x
+		var p := Vector2(x, surface_y(x) - 4.0)
 		ci.draw_line(p, Vector2(p.x - 10, 0), Color(0.85, 0.95, 0.95, 0.35), 2.5 * u, true)
-		var stone := Color(0.75, 0.78, 0.82).lerp(grime, 1.0 - Game.efficiency("pump"))
+		var stone := Color(0.75, 0.78, 0.82).lerp(Color(0.38, 0.32, 0.18), wear.call("pump"))
 		ci.draw_colored_polygon(DecorArt.ell(p, 14 * u, 6 * u), stone.darkened(0.25))
 		ci.draw_colored_polygon(DecorArt.ell(p + Vector2(0, -2), 12 * u, 3 * u), stone)
 		equip_rects["pump"] = Rect2(p - Vector2(18, 14) * u, Vector2(36, 22) * u)
+		_grime(ci, Rect2(p - Vector2(12, 6) * u, Vector2(24, 9) * u), wear.call("pump"), 11)
 	if e.heater != "":
-		var r := Rect2(size.x * 0.03, size.y * 0.06, 13 * u, size.y * 0.42)
-		ci.draw_rect(r, Color(0.8, 0.95, 1.0, 0.28).lerp(Color(0.9, 0.9, 0.85, 0.6), 1.0 - Game.efficiency("heater")))
+		var r := Rect2(equip_x("heater") * size.x - 6.5 * u, size.y * 0.06, 13 * u, size.y * 0.42)
+		var w: float = wear.call("heater")
+		ci.draw_rect(r, Color(0.8, 0.95, 1.0, 0.28))
 		var on := Game.water_temp < Game._temp_target() - 0.1
-		ci.draw_rect(Rect2(r.position + Vector2(4 * u, 20 * u), Vector2(5 * u, r.size.y - 30 * u)), Color(1.0, 0.45, 0.2, 0.85 if on else 0.3))
+		ci.draw_rect(Rect2(r.position + Vector2(4 * u, 20 * u), Vector2(5 * u, r.size.y - 30 * u)), Color(1.0, 0.45, 0.2, (0.85 if on else 0.3) * (1.0 - w * 0.6)))
 		ci.draw_rect(Rect2(r.position, Vector2(r.size.x, 16 * u)), Color(0.15, 0.17, 0.2))
+		# Cal: costra blanquecina que va cubriendo el tubo.
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 5
+		for i in int(w * 26):
+			ci.draw_circle(r.position + Vector2(rng.randf() * r.size.x, 16 * u + rng.randf() * (r.size.y - 16 * u)), rng.randf_range(2, 4.5) * u, Color(0.95, 0.94, 0.88, 0.75))
 		equip_rects["heater"] = r
-	var dirty := 1.0 - Game.efficiency("filter")
+	var dirty: float = wear.call("filter")
+	var fx := equip_x("filter") * size.x
 	match e.filter:
 		"esponja":
-			var c := Vector2(size.x * 0.92, surface_y(size.x * 0.92))
+			var c := Vector2(fx, surface_y(fx))
 			ci.draw_line(c + Vector2(0, -60 * u), Vector2(c.x, 0), Color(0.85, 0.95, 0.95, 0.4), 3.0 * u, true)
 			var sp := Rect2(c + Vector2(-16, -62) * u, Vector2(32, 58) * u)
-			ci.draw_rect(sp, Color(0.18, 0.2, 0.22).lerp(grime, dirty))
+			ci.draw_rect(sp, Color(0.18, 0.2, 0.22).lerp(Color(0.36, 0.3, 0.16), dirty))
 			for k in 6:
-				ci.draw_line(sp.position + Vector2(0, 8 + k * 9) * u, sp.position + Vector2(32, 8 + k * 9) * u, Color(0.28, 0.3, 0.33).lerp(grime.lightened(0.1), dirty), 2.0, true)
+				ci.draw_line(sp.position + Vector2(0, 8 + k * 9) * u, sp.position + Vector2(32, 8 + k * 9) * u, Color(0.28, 0.3, 0.33).lerp(Color(0.42, 0.36, 0.2), dirty), 2.0, true)
+			_grime(ci, sp, dirty, 21)
 			equip_rects["filter"] = sp
 		"mochila":
-			var r := Rect2(size.x * 0.78, -6, 70 * u, 64 * u)
+			var r := Rect2(fx - 35 * u, -6, 70 * u, 64 * u)
 			ci.draw_rect(r, Color(0.16, 0.18, 0.2))
-			ci.draw_rect(Rect2(r.position.x + 8, 52 * u, 54 * u, 10 * u), Color(0.85, 0.95, 1.0, 0.4 * (1.0 - dirty)))
-			ci.draw_rect(Rect2(r.position.x + 22 * u, 58 * u, 18 * u, size.y * 0.5), Color(0.2, 0.22, 0.24).lerp(grime, dirty))
+			# Cascada de salida: se debilita cuando el cartucho está saturado.
+			ci.draw_rect(Rect2(r.position.x + 8, 52 * u, 54 * u, (10 + 30 * (1.0 - dirty)) * u), Color(0.85, 0.95, 1.0, 0.45 * (1.0 - dirty)))
+			var tube := Rect2(r.position.x + 26 * u, 58 * u, 18 * u, size.y * 0.5)
+			ci.draw_rect(tube, Color(0.2, 0.22, 0.24))
+			_grime(ci, tube, dirty, 22)
 			equip_rects["filter"] = Rect2(r.position, Vector2(r.size.x, 58 * u + size.y * 0.5))
 		"skimmer":
-			var r := Rect2(size.x * 0.84, size.y * 0.08, 46 * u, size.y * 0.5)
+			var r := Rect2(fx - 23 * u, size.y * 0.08, 46 * u, size.y * 0.5)
 			ci.draw_rect(r, Color(0.85, 0.92, 0.98, 0.35))
-			ci.draw_rect(Rect2(r.position + Vector2(6, 6) * u, Vector2(34 * u, r.size.y * 0.2)), Color(0.55, 0.45, 0.25, 0.3 + 0.6 * dirty))
+			# Vaso colector: se llena de espuma marrón.
+			ci.draw_rect(Rect2(r.position + Vector2(6, 6) * u, Vector2(34 * u, r.size.y * 0.25)), Color(0.85, 0.92, 0.98, 0.25))
+			ci.draw_rect(Rect2(r.position + Vector2(6 * u, 6 * u + r.size.y * 0.25 * (1.0 - dirty)), Vector2(34 * u, r.size.y * 0.25 * dirty)), Color(0.45, 0.33, 0.15, 0.85))
 			for k in 8:
-				ci.draw_circle(r.position + Vector2(12 + (k % 3) * 10, r.size.y * (0.35 + k * 0.07)) * Vector2(u, 1), 3.0 * u, Color(1, 1, 1, 0.55))
+				ci.draw_circle(r.position + Vector2(12 + (k % 3) * 10, r.size.y * (0.38 + k * 0.07)) * Vector2(u, 1), 3.0 * u, Color(1, 1, 1, 0.55 * (1.0 - dirty * 0.7)))
 			ci.draw_rect(Rect2(r.position.x - 4, r.end.y, r.size.x + 8, 14 * u), Color(0.15, 0.17, 0.2))
 			equip_rects["filter"] = r
 		"canister":
-			var x := size.x * 0.9
-			var pipe := Color(0.6, 0.9, 0.75, 0.45).lerp(Color(0.45, 0.45, 0.2, 0.7), dirty)
-			ci.draw_line(Vector2(x, 0), Vector2(x, size.y * 0.7), pipe, 9 * u, true)
-			ci.draw_rect(Rect2(x - 8 * u, size.y * 0.7, 16 * u, 40 * u), pipe)
+			var pipe := Color(0.6, 0.9, 0.75, 0.45).lerp(Color(0.42, 0.4, 0.18, 0.8), dirty)
+			ci.draw_line(Vector2(fx, 0), Vector2(fx, size.y * 0.7), pipe, 9 * u, true)
+			var head := Rect2(fx - 8 * u, size.y * 0.7, 16 * u, 40 * u)
+			ci.draw_rect(head, pipe)
+			_grime(ci, head, dirty, 23)
 			ci.draw_line(Vector2(size.x * 0.12, 0), Vector2(size.x * 0.12, size.y * 0.12), pipe, 9 * u, true)
-			equip_rects["filter"] = Rect2(x - 14 * u, 0, 28 * u, size.y * 0.7 + 40 * u)
+			equip_rects["filter"] = Rect2(fx - 14 * u, 0, 28 * u, size.y * 0.7 + 40 * u)
 	if e.ato != "":
-		var p := Vector2(size.x * 0.6, size.y * 0.035)
+		var p := Vector2(equip_x("ato") * size.x, size.y * 0.035)
 		ci.draw_rect(Rect2(p, Vector2(26 * u, 12 * u)), Color(0.15, 0.17, 0.2))
-		ci.draw_line(p + Vector2(13 * u, 12 * u), p + Vector2(13 * u, 34 * u), Color(0.85, 0.95, 1.0, 0.5), 3.0 * u, true)
+		ci.draw_line(p + Vector2(13 * u, 12 * u), p + Vector2(13 * u, 34 * u), Color(0.85, 0.95, 1.0, 0.5 * (1.0 - wear.call("ato"))), 3.0 * u, true)
 		equip_rects["ato"] = Rect2(p - Vector2(8, 8), Vector2(42 * u, 48 * u))
+	var tx := equip_x("thermo") * size.x
 	match e.thermo:
-		"tira": equip_rects["thermo"] = Rect2(size.x - 40 * u, size.y * 0.1, 20 * u, size.y * 0.24)
-		"digital": equip_rects["thermo"] = Rect2(size.x - 104 * u, size.y * 0.07, 86 * u, 40 * u)
-	_build_pump()
+		"tira": equip_rects["thermo"] = Rect2(tx - 10 * u, size.y * 0.1, 20 * u, size.y * 0.24)
+		"digital": equip_rects["thermo"] = Rect2(tx - 43 * u, size.y * 0.07, 86 * u, 40 * u)
+	_update_pump_amount()
 	_top.queue_redraw()
 
 
@@ -450,28 +499,44 @@ func _draw_top() -> void:
 	if equip_rects.has("thermo"):
 		var r: Rect2 = equip_rects.thermo
 		if Game.equipment.thermo == "tira":
+			# Tira de cristal líquido: solo se ilumina la casilla más cercana y su número.
 			ci.draw_rect(r, Color(0.08, 0.1, 0.12, 0.9))
 			var t := clampi(roundi(Game.water_temp), 18, 31)
-			for k in 7:
-				var deg := 30 - k * 2
+			var degs := [30, 28, 26, 24, 22, 20, 18]
+			var best := 0
+			for k in degs.size():
+				if absi(degs[k] - t) < absi(degs[best] - t):
+					best = k
+			for k in degs.size():
 				var cell := Rect2(r.position + Vector2(3, 4 + k * (r.size.y - 8) / 7.0), Vector2(r.size.x - 6, (r.size.y - 8) / 7.0 - 2))
-				var lit := absi(deg - t) <= 1
-				ci.draw_rect(cell, Color(0.3, 0.95, 0.5) if lit else Color(0.2, 0.25, 0.3))
-				if lit:
-					ci.draw_string(font, cell.position + Vector2(-34 * u, cell.size.y), str(deg), HORIZONTAL_ALIGNMENT_LEFT, -1, int(15 * u), Color.WHITE)
+				ci.draw_rect(cell, Color(0.3, 0.95, 0.5) if k == best else Color(0.2, 0.25, 0.3))
+				if k == best:
+					var lx := cell.position.x - 38 * u if r.position.x > 50.0 else cell.end.x + 6 * u
+					ci.draw_string(font, Vector2(lx, cell.end.y), "%d°" % t, HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * u), Color.WHITE)
 		else:
+			var batt := Game.condition("thermo") / 100.0
 			ci.draw_rect(r, Color(0.92, 0.94, 0.96))
-			ci.draw_rect(r.grow(-4), Color(0.55, 0.75, 0.6) if Game.condition("thermo") > 0.0 else Color(0.4, 0.45, 0.42))
+			ci.draw_rect(r.grow(-4), Color(0.55, 0.75, 0.6).lerp(Color(0.45, 0.5, 0.47), 1.0 - batt) if batt > 0.0 else Color(0.4, 0.45, 0.42))
 			var txt := Game.thermometer_text()
-			ci.draw_string(font, r.position + Vector2(8, r.size.y * 0.72), txt, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 10, int(22 * u), Color(0.08, 0.15, 0.1))
+			ci.draw_string(font, r.position + Vector2(8, r.size.y * 0.72), txt, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 10, int(22 * u), Color(0.08, 0.15, 0.1, 0.25 + 0.75 * minf(1.0, batt * 2.0)))
+			# Pila: icono que se vacía (y parpadea cuando está casi agotada).
+			var b := Rect2(r.end.x - 16 * u, r.position.y + 6 * u, 10 * u, 6 * u)
+			if batt > 0.25 or fmod(Time.get_ticks_msec() / 500.0, 2.0) < 1.0:
+				ci.draw_rect(b, Color(0.1, 0.15, 0.1), false, 1.0)
+				ci.draw_rect(Rect2(b.position, Vector2(b.size.x * batt, b.size.y)), Color(0.1, 0.15, 0.1) if batt > 0.25 else UI.BAD)
 	var t := Time.get_ticks_msec() / 1000.0
 	for slot in Game.needs_maintenance():
 		if equip_rects.has(slot):
 			var r: Rect2 = equip_rects[slot]
-			var p := Vector2(clampf(r.get_center().x, 20.0, size.x - 20.0), maxf(r.position.y, 4.0) + 18.0 + sin(t * 3.0) * 3.0)
+			var p := Vector2(clampf(r.get_center().x, 20.0, size.x - 20.0), maxf(r.position.y - 16.0, 16.0) + sin(t * 3.0) * 3.0)
 			ci.draw_circle(p, 15.0, UI.WARN)
 			ci.draw_string(font, p + Vector2(-4, 8), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
 	if editing:
+		for slot in equip_rects:
+			if slot != "light":
+				var r: Rect2 = equip_rects[slot]
+				var sel: bool = slot == selected_equip
+				ci.draw_rect(r.grow(4.0), Color(0.55, 0.95, 1.0, 0.95 if sel else 0.45), false, 3.0 if sel else 1.5)
 		for i in _decor_nodes.size():
 			var r := decor_rect(i)
 			var sel := i == selected_decor

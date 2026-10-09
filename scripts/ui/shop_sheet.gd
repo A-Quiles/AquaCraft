@@ -2,7 +2,7 @@ class_name ShopSheet
 extends Sheet
 ## Mercado: peces (y exóticos del día), peceras, equipo, decoración/sustrato y comida.
 
-const TABS := ["Peces", "Peceras", "Equipo", "Decorar", "Comida"]
+const TABS := ["Peces", "Peceras", "Equipo", "Decorar", "Cuidados"]
 
 var tab := 0
 var _list: VBoxContainer
@@ -124,7 +124,7 @@ func _fish_tab() -> void:
 			continue
 		var r := RandomNumberGenerator.new()
 		r.seed = hash(sp)
-		var desc := "%s\n%d–%d °C · pH %.1f–%.1f" % [s.desc, s.temp[0], s.temp[1], s.ph[0], s.ph[1]]
+		var desc := "%s\n%s.\n%d–%d °C · pH %.1f–%.1f" % [s.desc, Game.diet_text(sp), s.temp[0], s.temp[1], s.ph[0], s.ph[1]]
 		_card(g, Previews.fish(Genetics.random_genes(sp, r)), s.name, desc, _price(s.price, "coins", s.level, Game.buy_fish.bind(sp)))
 
 
@@ -234,3 +234,11 @@ func _food_tab() -> void:
 		var prev := Previews.icon("food")
 		prev.modulate = Catalog.color(f.col).lightened(0.4)
 		_card(g, prev, f.name, desc, act)
+	_section("Productos para el agua", "se usan desde la estantería")
+	var g2 := _grid()
+	for id in Catalog.PRODUCT_ORDER:
+		var pr: Dictionary = Catalog.PRODUCTS[id]
+		var prev := Previews.icon("ph" if id != "antialgas" else "sparkle")
+		prev.modulate = Catalog.color(pr.col).lightened(0.3)
+		var desc := "%s\nTienes: %d · pack de %d" % [pr.desc, Game.products.get(id, 0), pr.pack]
+		_card(g2, prev, pr.name, desc, _price(pr.price, "coins", pr.level, Game.buy_product.bind(id)))

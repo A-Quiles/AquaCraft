@@ -53,7 +53,7 @@ func _draw() -> void:
 		if a.heart > 0.0:
 			_heart(top + Vector2(0, -6 * (1.6 - a.heart)), 7.0, Color(1.0, 0.4, 0.55, minf(1.0, a.heart)))
 		elif f.hunger > 60.0:
-			_bubble(top + Vector2(0, sin(t * 2.0 + f.id) * 2.0), "food")
+			_bubble(top + Vector2(0, sin(t * 2.0 + f.id) * 2.0), Catalog.SPECIES[f.genes.sp].diet[0])
 		elif f.health < 40.0:
 			_bubble(top + Vector2(0, sin(t * 2.0 + f.id) * 2.0), "sick")
 	for r in ripples:
@@ -76,9 +76,11 @@ func _draw() -> void:
 func _bubble(p: Vector2, kind: String) -> void:
 	draw_circle(p, 12.0, Color(1, 1, 1, 0.92))
 	draw_circle(p + Vector2(-7, 11), 3.0, Color(1, 1, 1, 0.92))
-	if kind == "food":
+	if Catalog.FOODS.has(kind):
+		# El bocadillo enseña el alimento que pide (algunos peces solo comen uno).
+		var c := Catalog.color(Catalog.FOODS[kind].col)
 		for k in 3:
-			draw_circle(p + Vector2(-5 + k * 5, 1 - (k % 2) * 3), 2.4, Color(1.0, 0.55, 0.2))
+			draw_circle(p + Vector2(-5 + k * 5, 1 - (k % 2) * 3), 2.6, c)
 	else:
 		draw_rect(Rect2(p + Vector2(-2, -7), Vector2(4, 14)), Color(0.95, 0.3, 0.35))
 		draw_rect(Rect2(p + Vector2(-7, -2), Vector2(14, 4)), Color(0.95, 0.3, 0.35))

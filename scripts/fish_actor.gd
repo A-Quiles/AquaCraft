@@ -56,7 +56,7 @@ func _process(dt: float) -> void:
 
 	var chasing := false
 	if data.hunger > 10.0 and flee <= 0.0:
-		var food := tank.food.nearest(position)
+		var food := tank.food.nearest(position, sp.diet)
 		if food != null:
 			chasing = true
 			target = food.pos

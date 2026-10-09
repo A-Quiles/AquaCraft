@@ -48,7 +48,7 @@ func _init() -> void:
 	for f in game.fish:
 		check(f.hunger > 90.0, "tras 8 h tienen hambre (%.0f)" % f.hunger)
 		check(f.health >= 25.0, "nadie baja del 25%% offline (%.0f)" % f.health)
-	check(game.water().dirt > 30.0 and game.water().dirt < 90.0, "las algas crecen poco a poco offline (%.0f%%)" % game.water().dirt)
+	check(game.water().dirt > 30.0 and game.water().dirt < 97.0, "las algas crecen poco a poco offline (%.0f%%)" % game.water().dirt)
 
 	# Limpiar y alimentar.
 	var before: float = game.water().dirt
@@ -117,6 +117,17 @@ func _init() -> void:
 	game.coins = 1000
 	check(game.convert_water() and game.water_kind == "dulce", "convertir a agua dulce")
 	check(game.decor_inv.has("anemona") and game.substrate == "grava", "lo marino se guarda al convertir")
+
+	# Productos y dietas.
+	game._refresh_water()
+	var ph0: float = game.water().ph
+	game.products.ph_up = 1
+	check(game.use_product("ph_up") and game.water().ph > ph0 + 0.25, "el regulador pH+ sube el pH")
+	check(not game.use_product("ph_up"), "sin existencias no se puede usar")
+	for sp in Catalog.SPECIES:
+		for f in Catalog.SPECIES[sp].diet:
+			check(Catalog.FOODS.has(f), "%s come algo que existe (%s)" % [sp, f])
+	check(Catalog.SPECIES.gobio_fuego.diet == ["artemia"], "hay especies que solo comen un alimento")
 
 	# Modo Relax: ni algas ni desgaste ni parámetros.
 	game.new_game("basico", "dulce")

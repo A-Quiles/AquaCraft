@@ -15,7 +15,7 @@ extends RefCounted
 ## presets: [cuerpo, patrón, aletas] · patterns: patrones normales de la especie
 const SPECIES := {
 	"guppy": {
-		"name": "Guppy", "water": "dulce", "desc": "Pequeño y alegre, con una cola en delta enorme y de mil colores.",
+		"diet": ["escamas", "granulos", "artemia"], "name": "Guppy", "water": "dulce", "desc": "Pequeño y alegre, con una cola en delta enorme y de mil colores.",
 		"price": 15, "level": 1, "temp": [21.0, 28.0], "ph": [6.8, 8.0], "load": 0.6,
 		"incubate": 180, "grow": 900, "speed": 62.0, "zone": "mid",
 		"shape": {"len": 0.36, "ht": 0.15, "hb": 0.15, "peak": 0.6, "kf": 0.6, "kr": 0.5, "kb": 0.45, "ped": 0.45,
@@ -25,7 +25,7 @@ const SPECIES := {
 			["e2dde8", "ff4fa3", "ff6fb5"], ["dfe6e0", "38d39f", "3ad6b0"], ["3a3d4a", "ff3b3b", "ff4a4a"]],
 	},
 	"neon": {
-		"name": "Tetra neón", "water": "dulce", "desc": "Torpedo diminuto con una franja azul que brilla como un letrero.",
+		"diet": ["escamas", "artemia"], "name": "Tetra neón", "water": "dulce", "desc": "Torpedo diminuto con una franja azul que brilla como un letrero.",
 		"price": 20, "level": 1, "temp": [21.0, 27.0], "ph": [5.8, 7.3], "load": 0.5,
 		"incubate": 300, "grow": 1200, "speed": 72.0, "zone": "mid",
 		"shape": {"len": 0.62, "ht": 0.19, "hb": 0.17, "peak": 0.6, "kf": 0.7, "kr": 0.6, "kb": 0.5, "ped": 0.35,
@@ -34,7 +34,7 @@ const SPECIES := {
 		"presets": [["9fb3c8", "25d0ff", "ff4058"], ["b8c2cc", "4cf3c9", "ff5a3c"], ["a7b0d6", "6f7bff", "ff4f8a"]],
 	},
 	"corydoras": {
-		"name": "Corydoras", "water": "dulce", "desc": "Acorazado, de vientre plano y con bigotitos para rebuscar en el fondo.",
+		"diet": ["granulos"], "name": "Corydoras", "water": "dulce", "desc": "Acorazado, de vientre plano y con bigotitos para rebuscar en el fondo.",
 		"price": 35, "level": 2, "temp": [21.0, 27.0], "ph": [6.0, 7.8], "load": 0.7,
 		"incubate": 420, "grow": 1500, "speed": 42.0, "zone": "bottom",
 		"shape": {"len": 0.6, "ht": 0.3, "hb": 0.13, "peak": 0.62, "kf": 0.85, "kr": 0.6, "kb": 0.15, "ped": 0.42,
@@ -43,7 +43,7 @@ const SPECIES := {
 		"presets": [["c9a77c", "5a4632", "d6bf9e"], ["e8d3b0", "4a3a2a", "e8dcc4"], ["8fa37b", "3b4a2a", "a8b894"]],
 	},
 	"goldfish": {
-		"name": "Pez dorado", "water": "dulce", "desc": "Variedad cola de velo: cuerpo de huevo y doble cola. Agua fría.",
+		"diet": ["escamas", "granulos"], "name": "Pez dorado", "water": "dulce", "desc": "Variedad cola de velo: cuerpo de huevo y doble cola. Agua fría.",
 		"price": 30, "level": 2, "temp": [17.0, 24.0], "ph": [6.8, 8.0], "load": 1.4,
 		"incubate": 360, "grow": 1800, "speed": 40.0, "zone": "mid",
 		"shape": {"len": 0.46, "ht": 0.37, "hb": 0.35, "peak": 0.5, "kf": 0.45, "kr": 0.6, "kb": 0.45, "ped": 0.32,
@@ -52,7 +52,7 @@ const SPECIES := {
 		"presets": [["ff8a1f", "fff4e0", "ff9a3a"], ["ffcc33", "ff6a1a", "ffd04d"], ["ff4a2e", "ffffff", "ff5a40"], ["fff3e6", "ff5a26", "fff1e0"]],
 	},
 	"molly": {
-		"name": "Molly velero", "water": "dulce", "desc": "Su enorme aleta dorsal es una vela. Tranquilo y resistente.",
+		"diet": ["escamas", "nori", "granulos"], "name": "Molly velero", "water": "dulce", "desc": "Su enorme aleta dorsal es una vela. Tranquilo y resistente.",
 		"price": 40, "level": 3, "temp": [22.0, 28.0], "ph": [7.0, 8.2], "load": 1.0,
 		"incubate": 420, "grow": 1800, "speed": 46.0, "zone": "mid",
 		"shape": {"len": 0.56, "ht": 0.26, "hb": 0.24, "peak": 0.55, "kf": 0.55, "kr": 0.5, "kb": 0.5, "ped": 0.55,
@@ -61,7 +61,7 @@ const SPECIES := {
 		"presets": [["1d1f26", "3a3d4a", "2a2d38"], ["f2b134", "ffffff", "f4c04f"], ["f5f7fa", "1d1f26", "eceff4"], ["ff8c42", "1d1f26", "ff9a55"]],
 	},
 	"betta": {
-		"name": "Betta", "water": "dulce", "desc": "El pez luchador: aletas de seda que caen como un vestido.",
+		"diet": ["artemia", "granulos"], "name": "Betta", "water": "dulce", "desc": "El pez luchador: aletas de seda que caen como un vestido.",
 		"price": 60, "level": 3, "temp": [24.0, 29.0], "ph": [6.0, 7.6], "load": 1.0,
 		"incubate": 600, "grow": 2400, "speed": 34.0, "zone": "top",
 		"shape": {"len": 0.42, "ht": 0.18, "hb": 0.2, "peak": 0.55, "kf": 0.6, "kr": 0.45, "kb": 0.45, "ped": 0.6,
@@ -70,7 +70,7 @@ const SPECIES := {
 		"presets": [["2a4dff", "ff2f6d", "2f56ff"], ["d6142e", "2a1a5e", "e0183a"], ["7b2cff", "ff4fcf", "8a3cff"], ["101a4a", "35e0ff", "1a3a8a"], ["f5f2ff", "ff9ec7", "f5f0ff"]],
 	},
 	"rainbow": {
-		"name": "Pez arcoíris", "water": "dulce", "desc": "Lomo alto, hocico fino y dos dorsales. Medio azul, medio fuego.",
+		"diet": ["escamas", "artemia"], "name": "Pez arcoíris", "water": "dulce", "desc": "Lomo alto, hocico fino y dos dorsales. Medio azul, medio fuego.",
 		"price": 75, "level": 4, "temp": [23.0, 28.0], "ph": [6.8, 8.0], "load": 1.2,
 		"incubate": 720, "grow": 2700, "speed": 74.0, "zone": "mid",
 		"shape": {"len": 0.62, "ht": 0.38, "hb": 0.24, "peak": 0.5, "kf": 1.0, "kr": 0.55, "kb": 0.5, "ped": 0.32,
@@ -79,7 +79,7 @@ const SPECIES := {
 		"presets": [["2d5bd8", "ff8c1a", "4a73e0"], ["2fd1c4", "ffd23f", "3ad6c8"], ["7a3cff", "ff5aa5", "8a50ff"]],
 	},
 	"angelfish": {
-		"name": "Pez ángel", "water": "dulce", "desc": "Cuerpo de diamante, aletas como velas y largos filamentos.",
+		"diet": ["escamas", "artemia"], "name": "Pez ángel", "water": "dulce", "desc": "Cuerpo de diamante, aletas como velas y largos filamentos.",
 		"price": 120, "level": 6, "temp": [24.0, 29.0], "ph": [6.0, 7.5], "load": 1.6,
 		"incubate": 1200, "grow": 3600, "speed": 34.0, "zone": "mid",
 		"shape": {"len": 0.36, "ht": 0.3, "hb": 0.3, "peak": 0.55, "kf": 0.7, "kr": 0.75, "kb": 0.75, "ped": 0.3,
@@ -88,7 +88,7 @@ const SPECIES := {
 		"presets": [["dfe5ea", "2a2f3a", "e6ebef"], ["ffd23f", "ff8c1a", "ffe07a"], ["2a2f3a", "4a5060", "3a3f4a"], ["f0f2f5", "ff7a3a", "f5f6f8"]],
 	},
 	"discus": {
-		"name": "Disco", "water": "dulce", "desc": "Un disco perfecto con aletas como un fleco. El rey del agua dulce.",
+		"diet": ["artemia", "granulos"], "name": "Disco", "water": "dulce", "desc": "Un disco perfecto con aletas como un fleco. El rey del agua dulce.",
 		"price": 260, "level": 8, "temp": [27.0, 31.0], "ph": [5.8, 7.0], "load": 1.8,
 		"incubate": 1800, "grow": 5400, "speed": 30.0, "zone": "mid",
 		"shape": {"len": 0.56, "ht": 0.52, "hb": 0.52, "peak": 0.5, "kf": 0.42, "kr": 0.42, "kb": 0.42, "ped": 0.26,
@@ -98,7 +98,7 @@ const SPECIES := {
 	},
 	# ───── Agua salada ─────
 	"payaso": {
-		"name": "Pez payaso", "water": "salada", "desc": "Naranja con tres bandas blancas. Feliz si tiene una anémona.",
+		"diet": ["escamas", "artemia", "granulos"], "name": "Pez payaso", "water": "salada", "desc": "Naranja con tres bandas blancas. Feliz si tiene una anémona.",
 		"price": 45, "level": 1, "temp": [24.0, 28.0], "ph": [7.9, 8.5], "load": 0.8,
 		"incubate": 600, "grow": 2400, "speed": 44.0, "zone": "mid",
 		"shape": {"len": 0.5, "ht": 0.27, "hb": 0.24, "peak": 0.55, "kf": 0.5, "kr": 0.55, "kb": 0.5, "ped": 0.5,
@@ -107,7 +107,7 @@ const SPECIES := {
 		"presets": [["ff7a1a", "ffffff", "ff8a2a"], ["ff5a14", "ffffff", "ff6a24"], ["2a2626", "ffffff", "2e2a2a"]],
 	},
 	"gramma": {
-		"name": "Gramma loreto", "water": "salada", "desc": "Mitad violeta, mitad amarillo. Pequeño y muy pacífico.",
+		"diet": ["artemia"], "name": "Gramma loreto", "water": "salada", "desc": "Mitad violeta, mitad amarillo. Pequeño y muy pacífico.",
 		"price": 60, "level": 2, "temp": [24.0, 27.0], "ph": [7.9, 8.5], "load": 0.6,
 		"incubate": 540, "grow": 2100, "speed": 50.0, "zone": "mid",
 		"shape": {"len": 0.58, "ht": 0.21, "hb": 0.19, "peak": 0.6, "kf": 0.6, "kr": 0.5, "kb": 0.5, "ped": 0.45,
@@ -116,7 +116,7 @@ const SPECIES := {
 		"presets": [["8a3cff", "ffd23f", "ffd23f"], ["b13cff", "ffc21f", "ffc21f"]],
 	},
 	"gobio_fuego": {
-		"name": "Gobio de fuego", "water": "salada", "desc": "Esbelto, con una dorsal en forma de lanza y cola de fuego.",
+		"diet": ["artemia"], "name": "Gobio de fuego", "water": "salada", "desc": "Esbelto, con una dorsal en forma de lanza y cola de fuego.",
 		"price": 80, "level": 3, "temp": [24.0, 27.0], "ph": [7.9, 8.5], "load": 0.5,
 		"incubate": 600, "grow": 2400, "speed": 56.0, "zone": "bottom",
 		"shape": {"len": 0.62, "ht": 0.15, "hb": 0.14, "peak": 0.6, "kf": 0.6, "kr": 0.45, "kb": 0.45, "ped": 0.55,
@@ -125,7 +125,7 @@ const SPECIES := {
 		"presets": [["fff6ee", "ff3d1f", "ff5a2a"], ["fff0f6", "c63cff", "ff3d7a"]],
 	},
 	"cirujano_azul": {
-		"name": "Cirujano azul", "water": "salada", "desc": "Azul eléctrico con su dibujo negro de paleta y cola amarilla.",
+		"diet": ["nori"], "name": "Cirujano azul", "water": "salada", "desc": "Azul eléctrico con su dibujo negro de paleta y cola amarilla.",
 		"price": 140, "level": 3, "temp": [24.0, 27.0], "ph": [8.0, 8.4], "load": 1.4,
 		"incubate": 1200, "grow": 3600, "speed": 52.0, "zone": "mid",
 		"shape": {"len": 0.56, "ht": 0.36, "hb": 0.34, "peak": 0.52, "kf": 0.9, "kr": 0.55, "kb": 0.55, "ped": 0.25,
@@ -134,7 +134,7 @@ const SPECIES := {
 		"presets": [["1f63e8", "141a2e", "ffd23f"], ["2a7bff", "121a33", "ffc81f"]],
 	},
 	"cirujano_amarillo": {
-		"name": "Cirujano amarillo", "water": "salada", "desc": "Un disco amarillo limón con hocico de trompeta.",
+		"diet": ["nori"], "name": "Cirujano amarillo", "water": "salada", "desc": "Un disco amarillo limón con hocico de trompeta.",
 		"price": 120, "level": 4, "temp": [24.0, 27.0], "ph": [8.0, 8.4], "load": 1.3,
 		"incubate": 1200, "grow": 3600, "speed": 48.0, "zone": "mid",
 		"shape": {"len": 0.48, "ht": 0.48, "hb": 0.46, "peak": 0.5, "kf": 1.15, "kr": 0.55, "kb": 0.55, "ped": 0.3,
@@ -143,7 +143,7 @@ const SPECIES := {
 		"presets": [["ffd400", "fff2a8", "ffd400"], ["ffe11f", "ffffff", "ffe11f"]],
 	},
 	"angel_llama": {
-		"name": "Ángel llama", "water": "salada", "desc": "Rojo fuego con barras negras y aletas ribeteadas de azul.",
+		"diet": ["nori", "artemia"], "name": "Ángel llama", "water": "salada", "desc": "Rojo fuego con barras negras y aletas ribeteadas de azul.",
 		"price": 180, "level": 5, "temp": [24.0, 27.0], "ph": [8.0, 8.4], "load": 1.0,
 		"incubate": 1500, "grow": 4200, "speed": 40.0, "zone": "mid",
 		"shape": {"len": 0.5, "ht": 0.32, "hb": 0.31, "peak": 0.55, "kf": 0.6, "kr": 0.6, "kb": 0.6, "ped": 0.45,
@@ -253,11 +253,20 @@ const SUBSTRATE_ORDER := ["grava", "arena", "pastel", "negra", "tierra", "aragon
 
 ## nutrition: hambre que quita · grow: multiplicador de crecimiento · happy: felicidad por bocado
 const FOODS := {
-	"escamas": {"name": "Escamas", "price": 0, "pack": 0, "level": 1, "nutrition": 20.0, "grow": 1.0, "happy": 0.5, "col": "ff8a3d", "desc": "Básico e infinito."},
-	"granulos": {"name": "Gránulos premium", "price": 60, "pack": 20, "level": 1, "nutrition": 28.0, "grow": 1.7, "happy": 1.5, "col": "a0663a", "desc": "Crecen un 70% más rápido."},
+	"escamas": {"name": "Escamas", "price": 0, "pack": 0, "level": 1, "nutrition": 20.0, "grow": 1.0, "happy": 0.5, "col": "ff8a3d", "desc": "Básico e infinito. Flotan y caen despacio."},
+	"granulos": {"name": "Gránulos de fondo", "price": 60, "pack": 20, "level": 1, "nutrition": 28.0, "grow": 1.7, "happy": 1.5, "col": "a0663a", "desc": "Se hunden hasta el fondo. Crecen un 70% más rápido."},
+	"nori": {"name": "Alga nori", "price": 70, "pack": 12, "level": 1, "nutrition": 26.0, "grow": 1.2, "happy": 2.0, "col": "3f7a3a", "desc": "Para herbívoros: cirujanos, ángel llama, molly."},
 	"artemia": {"name": "Artemia", "price": 90, "pack": 12, "level": 2, "nutrition": 24.0, "grow": 1.2, "happy": 6.0, "col": "ff6f8e", "desc": "¡Su manjar favorito! Mucha felicidad."},
 }
-const FOOD_ORDER := ["escamas", "granulos", "artemia"]
+const FOOD_ORDER := ["escamas", "granulos", "artemia", "nori"]
+
+## Productos para el agua (se compran en la tienda y se usan desde la estantería).
+const PRODUCTS := {
+	"ph_up": {"name": "Regulador pH+", "short": "pH+", "price": 80, "pack": 5, "level": 1, "col": "3f8cff", "desc": "Sube el pH unas 3 décimas. El efecto se va perdiendo en un día."},
+	"ph_down": {"name": "Regulador pH−", "short": "pH−", "price": 80, "pack": 5, "level": 1, "col": "ff7a3a", "desc": "Baja el pH unas 3 décimas. Ideal para tetras y discos."},
+	"antialgas": {"name": "Antialgas", "short": "Alg", "price": 120, "pack": 4, "level": 2, "col": "3fbf6a", "desc": "Disuelve parte de las algas y frena su crecimiento 12 horas."},
+}
+const PRODUCT_ORDER := ["ph_up", "ph_down", "antialgas"]
 
 ## Misiones de historia: una activa cada vez, sirven de tutorial.
 ## type se evalúa en Game._story_progress()

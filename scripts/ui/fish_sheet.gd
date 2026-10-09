@@ -138,6 +138,7 @@ func _show_detail(id: int) -> void:
 	if not probs.is_empty():
 		sv.add_child(UI.wrap(UI.label("Le molesta: %s" % ", ".join(probs).to_lower(), 21, UI.BAD, UI.bold)))
 	var s: Dictionary = Catalog.SPECIES[f.genes.sp]
+	sv.add_child(UI.wrap(UI.label(Game.diet_text(f.genes.sp) + ".", 20, UI.NAVY, UI.bold)))
 	sv.add_child(UI.wrap(UI.label("Le gusta: %d–%d °C · pH %.1f–%.1f%s" % [s.temp[0], s.temp[1], s.ph[0], s.ph[1],
 		" · salinidad %.3f–%.3f" % Catalog.SALINITY if s.water == "salada" else ""], 20, UI.MUTED, UI.bold)))
 	stats.add_child(sv)

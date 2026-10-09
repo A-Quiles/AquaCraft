@@ -17,23 +17,27 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var betta := {"sp": "betta", "a": [0.62, 0.85, 0.95], "b": [0.92, 0.75, 1.0], "f": [0.66, 0.8, 0.95],
-		"pat": 1, "size": 1.0, "neon": false, "albino": false, "veil": true, "rare_col": false}
-
-	# Icono completo 512
+	# Icono: pez payaso sobre su anémona, con un cirujano azul al fondo (arrecife, mucho color).
+	var clown := {"sp": "payaso", "a": [0.07, 0.95, 1.0], "b": [0.0, 0.0, 1.0], "f": [0.07, 0.92, 1.0],
+		"pat": 5, "size": 1.0, "neon": false, "albino": false, "veil": false, "rare_col": false}
+	var tang := {"sp": "cirujano_azul", "a": [0.61, 0.86, 0.92], "b": [0.64, 0.6, 0.18], "f": [0.13, 0.78, 1.0],
+		"pat": 8, "size": 1.0, "neon": false, "albino": false, "veil": false, "rare_col": false}
 	var vp := _viewport(Vector2i(512, 512), false)
-	_water(vp, Vector2(512, 512))
-	_bubbles(vp, [Vector2(400, 120), Vector2(430, 70), Vector2(380, 40)], 1.6)
-	_fish(vp, betta, Vector2(262, 270), 4.4)
+	_water(vp, Vector2(512, 512), true)
+	_anemone(vp, Vector2(256, 560), 2.6)
+	_fish(vp, tang, Vector2(130, 150), 1.7, true)
+	_bubbles(vp, [Vector2(420, 110), Vector2(445, 70), Vector2(410, 38)], 1.5)
+	_fish(vp, clown, Vector2(238, 258), 4.4)
 	await _save(vp, "res://assets/icon.png")
 
-	# Icono adaptativo: fondo y primer plano (zona segura = 66% central)
+	# Icono adaptativo: fondo (agua + anémona) y primer plano (peces), zona segura = 66% central.
 	vp = _viewport(Vector2i(432, 432), false)
-	_water(vp, Vector2(432, 432))
+	_water(vp, Vector2(432, 432), true)
+	_anemone(vp, Vector2(216, 500), 2.2)
 	await _save(vp, "res://assets/android/icon_background.png")
 	vp = _viewport(Vector2i(432, 432), true)
-	_bubbles(vp, [Vector2(300, 140), Vector2(320, 105)], 1.2)
-	_fish(vp, betta, Vector2(220, 225), 2.75)
+	_fish(vp, tang, Vector2(150, 160), 1.25, true)
+	_fish(vp, clown, Vector2(222, 226), 3.1)
 	await _save(vp, "res://assets/android/icon_foreground.png")
 
 	# Gráfico destacado 1024×500
@@ -64,7 +68,7 @@ func _run() -> void:
 	for f in [["discus", Vector2(860, 170), 1.5, 1], ["goldfish", Vector2(690, 120), 1.3, 0], ["neon", Vector2(950, 330), 1.3, 0],
 			["rainbow", Vector2(610, 360), 1.2, 0], ["guppy", Vector2(975, 75), 1.4, 0]]:
 		_fish(vp, Genetics.random_genes(f[0], r, f[3]), f[1], f[2])
-	_fish(vp, betta, Vector2(800, 320), 2.0)
+	_fish(vp, clown, Vector2(800, 330), 1.7)
 	var title := UI.label("AquaCraft", 112, Color.WHITE, UI.heading)
 	title.add_theme_color_override("font_shadow_color", Color(0.02, 0.15, 0.25, 0.55))
 	title.add_theme_constant_override("shadow_offset_x", 0)
@@ -88,21 +92,35 @@ func _viewport(size: Vector2i, transparent: bool) -> SubViewport:
 	return vp
 
 
-func _water(vp: SubViewport, size: Vector2) -> void:
+func _anemone(vp: SubViewport, base: Vector2, k: float) -> void:
+	var n := Node2D.new()
+	n.position = base
+	n.scale = Vector2(k, k)
+	vp.add_child(n)
+	n.draw.connect(func(): DecorArt.draw(n, "anemona", 1.0, 4))
+
+
+func _water(vp: SubViewport, size: Vector2, marine := false) -> void:
 	var w := ColorRect.new()
 	w.size = size
 	var m := ShaderMaterial.new()
 	m.shader = WATER
 	m.set_shader_parameter("size", size)
 	m.set_shader_parameter("light", 1.2)
+	if marine:
+		m.set_shader_parameter("top_col", Color(0.5, 0.88, 1.0))
+		m.set_shader_parameter("deep_col", Color(0.02, 0.17, 0.42))
 	m.set_shader_parameter("caustics", CAUSTICS)
 	m.set_shader_parameter("noise", NOISE)
 	w.material = m
 	vp.add_child(w)
 
 
-func _fish(vp: SubViewport, g: Dictionary, center: Vector2, zoom: float) -> void:
+func _fish(vp: SubViewport, g: Dictionary, center: Vector2, zoom: float, far := false) -> void:
 	var p := FishPreview.make(g, zoom)
+	if far:
+		p.material.set_shader_parameter("depth", 0.45)
+		p.material.set_shader_parameter("fog", Color(0.1, 0.4, 0.7))
 	p.material.set_shader_parameter("auto_wag", 0.0)
 	p.material.set_shader_parameter("phase", 1.2)
 	p.size = p.custom_minimum_size

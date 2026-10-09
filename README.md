@@ -5,7 +5,7 @@ Simulador *cozy* de acuarios para Android: cuida el agua, alimenta a tus peces, 
 
 <p align="center"><img src="store/feature_graphic.png" width="720"></p>
 
-## Qué incluye (v0.1)
+## Qué incluye (v0.4)
 
 | Sistema | Detalle |
 |---|---|
@@ -14,9 +14,10 @@ Simulador *cozy* de acuarios para Android: cuida el agua, alimenta a tus peces, 
 | Agua | Dulce o salada: cada una con sus peces, plantas/corales, sustratos y equipo. En salada la sal se concentra al evaporarse (reponer agua o instalar reposición automática). Se puede convertir la pecera |
 | Peces | 15 especies (9 de agua dulce, 6 marinas) con anatomía propia por shader: lomo y vientre, 7 tipos de cola, dorsal/anal con barrido, adiposa, barbillones, filamentos |
 | Genética | Colores, patrón y tamaño heredados; mutaciones Neón, Albino, Velo, Color raro, Patrón raro y Gigante; 5 rarezas |
-| Cuidados | Hambre, salud, felicidad, temperatura, pH, oxígeno y algas que aparecen poco a poco en el cristal y se limpian deslizando el dedo |
-| Equipo | 12 aparatos en 5 huecos (filtro, calentador, aireador, luz, termómetro). Cada uno se desgasta, rinde menos y avisa; se le hace mantenimiento tocándolo en la pecera |
-| Decoración | Modo Decorar: arrastra cada pieza donde quieras, voltéala, ponla al fondo, en medio o delante de los peces, y guárdala en el inventario |
+| Cuidados | Hambre, salud, felicidad, temperatura, pH, oxígeno y algas que aparecen poco a poco en el cristal. Estantería física junto a la pecera: limpiacristales (se coge y se pasa por el cristal), botes de comida y productos (pH+, pH−, antialgas) |
+| Dietas | Cada especie come lo suyo: corydoras solo gránulos de fondo, gramma y gobio de fuego solo artemia, cirujanos solo nori. El bocadillo de hambre enseña qué piden |
+| Equipo | Aparatos en 6 huecos (filtro, calentador, aireador, luz, termómetro, reposición). Se desgastan de forma visible (suciedad, luz que parpadea, aviso "!"), rinden menos y se mantienen manteniéndolos pulsados |
+| Decoración | Modo Decorar: arrastra cada pieza **y cada aparato** donde quieras, voltéala, ponla al fondo, en medio o delante de los peces, y guárdala en el inventario |
 | Mercado | Peces (+2 exóticos al día), 4 peceras, 12 equipos, 14 decoraciones, 5 sustratos, 3 comidas |
 | Tutorial | Guía interactiva la primera vez (alimentar, limpiar, mantenimiento, criar, decorar); se puede repetir desde Misiones |
 | Progresión | Nivel de acuarista, 17 misiones de historia (hacen de tutorial), 3 diarias + bonus, colección de variantes |

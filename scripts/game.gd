@@ -30,6 +30,7 @@ var water_kind := "dulce"                 ## dulce / salada
 var salinity := 1.0245               ## densidad (solo agua salada)
 var equipment := {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
 var equip_cond := {}                 ## hueco → estado 0..100 (baja con el uso, sube con mantenimiento)
+var equip_pos := {}                  ## hueco → x (0..1) elegida en modo Decorar
 var heater_target := 25.0
 var water_temp := ROOM_TEMP
 var substrate := "grava"
@@ -37,6 +38,9 @@ var owned_substrates: Array = ["grava"]
 var decor: Array = []                ## colocadas: {id, x (0..1), layer (0 fondo, 1 medio, 2 delante), flip}
 var decor_inv := {}                  ## guardadas: id → cantidad
 var food := {"granulos": 5, "artemia": 3}
+var products := {"ph_up": 1, "ph_down": 1, "antialgas": 1}
+var ph_adjust := 0.0                 ## efecto de los reguladores de pH (se disipa con el tiempo)
+var algae_block_until := 0.0         ## antialgas: hasta cuándo crecen a la mitad
 var fish: Array = []
 var eggs: Array = []
 var algae := PackedByteArray()
@@ -169,12 +173,16 @@ func new_game(game_mode := "normal", water_type := "dulce") -> void:
 	# El marino necesita calor sí o sí: trae un calentador fijo.
 	equipment = {"filter": "esponja", "heater": "calentador_fijo" if marine else "", "pump": "", "light": "", "thermo": "tira", "ato": ""}
 	equip_cond = {"filter": 45.0 if mode != "basico" else 100.0, "thermo": 100.0, "heater": 100.0}
+	equip_pos = {}
 	substrate = "aragonita" if marine else "grava"
 	owned_substrates = [substrate]
 	decor = [_decor_entry("roca_viva", 0.25), _decor_entry("anemona", 0.7)] if marine \
 		else [_decor_entry("vallisneria", 0.2), _decor_entry("rocas", 0.68)]
 	decor_inv = {}
-	food = {"granulos": 5, "artemia": 3}
+	food = {"granulos": 5, "artemia": 6, "nori": 4 if marine else 0}
+	products = {"ph_up": 1, "ph_down": 1, "antialgas": 1}
+	ph_adjust = 0.0
+	algae_block_until = 0.0
 	fish = []
 	eggs = []
 	stats = {}
@@ -260,9 +268,10 @@ func save_game() -> void:
 	_save_acc = 0.0
 	var data := {
 		"v": SAVE_VERSION, "mode": mode, "water": water_kind, "salinity": salinity, "coins": coins, "pearls": pearls, "level": level, "xp": xp,
-		"tank_tier": tank_tier, "equipment": equipment, "equip_cond": equip_cond, "heater_target": heater_target,
+		"tank_tier": tank_tier, "equipment": equipment, "equip_cond": equip_cond, "equip_pos": equip_pos, "heater_target": heater_target,
 		"water_temp": water_temp, "substrate": substrate, "owned_substrates": owned_substrates,
-		"decor": decor, "decor_inv": decor_inv, "food": food, "fish": fish, "eggs": eggs,
+		"decor": decor, "decor_inv": decor_inv, "food": food, "products": products, "ph_adjust": ph_adjust,
+		"algae_block_until": algae_block_until, "fish": fish, "eggs": eggs,
 		"algae": Marshalls.raw_to_base64(algae), "stats": stats, "discovered": discovered,
 		"daily": daily, "story_idx": story_idx, "next_id": next_id, "last_sim": last_sim,
 		"started": started,
@@ -302,6 +311,7 @@ func load_game() -> bool:
 	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
 	equipment.merge(d.equipment, true)
 	equip_cond = d.get("equip_cond", {})
+	equip_pos = d.get("equip_pos", {})
 	heater_target = float(d.heater_target)
 	water_temp = float(d.water_temp)
 	substrate = d.substrate
@@ -311,6 +321,11 @@ func load_game() -> bool:
 	for i in old.size():
 		# Partidas antiguas guardaban solo el id.
 		decor.append(old[i] if old[i] is Dictionary else _decor_entry(old[i], 0.12 + 0.76 * i / maxf(1.0, old.size() - 1.0)))
+	products = d.get("products", {"ph_up": 1, "ph_down": 1, "antialgas": 1})
+	for k in products:
+		products[k] = int(products[k])
+	ph_adjust = float(d.get("ph_adjust", 0.0))
+	algae_block_until = float(d.get("algae_block_until", 0.0))
 	decor_inv = d.get("decor_inv", {})
 	for k in decor_inv:
 		decor_inv[k] = int(decor_inv[k])
@@ -388,6 +403,7 @@ func _sim(dt: float, now: float) -> void:
 	if not _offline_floor:
 		_refresh_water()
 	water_temp = move_toward(water_temp, _temp_target(), 0.6 * m)
+	ph_adjust = move_toward(ph_adjust, 0.0, 0.3 / 1440.0 * m)  # se disipa en ~1 día
 	_wear(dt)
 	var w: Dictionary = _cache
 	_evaporate(dt)
@@ -420,6 +436,13 @@ func _sim(dt: float, now: float) -> void:
 	if hatched:
 		eggs_changed.emit()
 	_dirty = true
+
+
+func diet_text(sp: String) -> String:
+	var names := PackedStringArray()
+	for f in Catalog.SPECIES[sp].diet:
+		names.append(Catalog.FOODS[f].name.to_lower())
+	return ("Solo come " if names.size() == 1 else "Come ") + ", ".join(names)
 
 
 ## Qué le molesta a un pez (vacío = está a gusto). El margen depende del modo de juego.
@@ -455,6 +478,8 @@ func _grow_algae(dt: float) -> void:
 		return
 	# Lento a propósito: sin filtro, 2-3 peces tardan ~7 h en cubrir el cristal.
 	var per_min: float = (0.07 + 0.12 * w.load) * (1.0 - w.filter) * (1.0 - w.plant_clean) * float(mk("algae"))
+	if Time.get_unix_time_from_system() < algae_block_until:
+		per_min *= 0.5
 	var add := per_min * dt / 60.0 * 2.55          # bytes por celda (peso medio 1)
 	if add <= 0.0:
 		return
@@ -515,7 +540,7 @@ func _refresh_water() -> void:
 	_cache = {
 		"dirt": dirt,
 		"ph": clampf((8.25 if water_kind == "salada" else 7.6) - dirt * 0.014 * (1.4 if mode == "realista" else 1.0) + ph_fx
-			- (0.15 if substrate == "tierra" else 0.0), 5.6, 8.6),
+			- (0.15 if substrate == "tierra" else 0.0) + ph_adjust, 5.6, 8.6),
 		"o2": clampf(o2, 10.0, 100.0),
 		"load": load,
 		"o2_cap": cap,
@@ -995,6 +1020,35 @@ func buy_substrate(id: String) -> void:
 	tank_changed.emit()
 	toast.emit("Sustrato: %s" % s.name, "plant")
 	changed.emit()
+
+
+func buy_product(id: String) -> void:
+	var pr: Dictionary = Catalog.PRODUCTS[id]
+	if not spend(pr.price, "coins"):
+		return
+	products[id] = int(products.get(id, 0)) + pr.pack
+	_bought("+%d %s" % [pr.pack, pr.name], "ph")
+
+
+func use_product(id: String) -> bool:
+	if int(products.get(id, 0)) <= 0:
+		toast.emit("No te queda %s: cómpralo en la tienda" % Catalog.PRODUCTS[id].name, "ph")
+		return false
+	products[id] -= 1
+	match id:
+		"ph_up": ph_adjust = minf(ph_adjust + 0.3, 1.2)
+		"ph_down": ph_adjust = maxf(ph_adjust - 0.3, -1.2)
+		"antialgas":
+			for i in algae.size():
+				algae[i] = int(algae[i] * 0.6)
+			algae_block_until = Time.get_unix_time_from_system() + 12.0 * 3600.0
+			algae_changed.emit()
+	_bump("maint", 1)
+	_refresh_water()
+	toast.emit("%s añadido al agua" % Catalog.PRODUCTS[id].name, "ph")
+	changed.emit()
+	_dirty = true
+	return true
 
 
 func buy_food(id: String) -> void:
