@@ -22,6 +22,7 @@ func drop(x: float, type: String) -> void:
 	if Game.is_round():
 		x = clampf(x, tank.size.x * 0.3, tank.size.x * 0.7)   # la boca de la pecera redonda es estrecha
 	var n := 3 if type == "escamas" else 2
+	Sfx.play("plop", 80, -4.0)
 	var base: Color = Catalog.color(Catalog.FOODS[type].col)
 	for i in n:
 		var f := Flake.new()

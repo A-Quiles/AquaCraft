@@ -12,7 +12,7 @@ config_version=5
 
 config/name="AquaCraft"
 config/description="Simulador cozy de acuarios y crianza de peces."
-config/version="0.6.0"
+config/version="0.7.0"
 run/main_scene="res://scenes/main.tscn"
 config/quit_on_go_back=false
 config/features=PackedStringArray("4.7", "GL Compatibility")
@@ -23,6 +23,7 @@ config/icon="res://assets/icon.png"
 [autoload]
 
 Game="*res://scripts/game.gd"
+Sfx="*res://scripts/sfx.gd"
 
 [display]
 
@@ -33,6 +34,10 @@ window/size/window_height_override=780
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/aqua_notify/plugin.cfg")
 
 [input_devices]
 

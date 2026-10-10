@@ -14,6 +14,8 @@ const BOUNDS := {
 	"caulerpa": Rect2(-55, -125, 110, 128), "anemona": Rect2(-70, -105, 140, 108),
 	"coral_blando": Rect2(-60, -120, 120, 123), "roca_viva": Rect2(-80, -78, 160, 81),
 	"coral_cerebro": Rect2(-62, -66, 124, 69),
+	"calabaza": Rect2(-62, -98, 124, 101), "arbol_coral": Rect2(-62, -175, 124, 178),
+	"cerezo": Rect2(-85, -150, 170, 153), "castillo_arena": Rect2(-78, -150, 156, 153),
 }
 
 
@@ -40,6 +42,10 @@ static func draw(ci: CanvasItem, id: String, u: float, sd: int) -> void:
 		"coral_blando": _coral_blando(ci, u, rng)
 		"roca_viva": _roca_viva(ci, u, rng)
 		"coral_cerebro": _coral_cerebro(ci, u, rng)
+		"calabaza": _calabaza(ci, u, rng)
+		"arbol_coral": _arbol_coral(ci, u, rng)
+		"cerezo": _cerezo(ci, u, rng)
+		"castillo_arena": _castillo_arena(ci, u, rng)
 
 
 # ───────────────────────── Plantas ─────────────────────────
@@ -389,6 +395,86 @@ static func _coral_cerebro(ci: CanvasItem, u: float, rng: RandomNumberGenerator)
 # ───────────────────────── Utilidades de dibujo ─────────────────────────
 
 ## Hoja de hierba que se estrecha hacia la punta (muchos vértices para que ondule bien).
+# ───────────────────────── Eventos de temporada ─────────────────────────
+
+static func _calabaza(ci: CanvasItem, u: float, _rng: RandomNumberGenerator) -> void:
+	var c := Vector2(0, -42) * u
+	ci.draw_colored_polygon(ell(c + Vector2(0, 40) * u, 58 * u, 8 * u), Color(0, 0, 0, 0.2))
+	for k in [-2, 2, -1, 1, 0]:
+		var pts := ell(c + Vector2(k * 17, 0) * u, 26 * u, 42 * u)
+		ci.draw_polygon(pts, vgrad(pts, Color("ffa23a"), Color("c8501a")))
+	# Cara tallada con luz dentro.
+	var glow := Color(1.0, 0.85, 0.3)
+	for side in [-1.0, 1.0]:
+		ci.draw_colored_polygon(PackedVector2Array([c + Vector2(side * 22, -6) * u, c + Vector2(side * 8, -6) * u, c + Vector2(side * 15, -20) * u]), glow)
+	var mouth := PackedVector2Array([c + Vector2(-28, 10) * u, c + Vector2(-14, 18) * u, c + Vector2(-7, 12) * u, c + Vector2(0, 20) * u,
+		c + Vector2(7, 12) * u, c + Vector2(14, 18) * u, c + Vector2(28, 10) * u, c + Vector2(14, 28) * u, c + Vector2(-14, 28) * u])
+	ci.draw_colored_polygon(mouth, glow)
+	ci.draw_circle(c, 46 * u, Color(1.0, 0.7, 0.2, 0.08))
+	limb(ci, [c + Vector2(0, -38) * u, c + Vector2(4, -52) * u, c + Vector2(12, -56) * u], [10 * u, 7 * u, 5 * u], Color("6aa84f"), Color("38761d"))
+
+
+static func _arbol_coral(ci: CanvasItem, u: float, rng: RandomNumberGenerator) -> void:
+	ci.draw_colored_polygon(ell(Vector2(0, -2) * u, 40 * u, 7 * u), Color(0, 0, 0, 0.2))
+	block(ci, Rect2(-8, -26, 16, 26), u, Color("8a5a36"), Color("5e3a22"))
+	for tier in 4:
+		var y := -26.0 - tier * 34.0
+		var w := 58.0 - tier * 13.0
+		var pts := PackedVector2Array([Vector2(-w, y) * u, Vector2(w, y) * u, Vector2(0, y - 52) * u])
+		ci.draw_polygon(pts, vgrad(pts, Color("bff0e0"), Color("2f8f6f")))
+		for k in 7:
+			ci.draw_circle(Vector2(rng.randf_range(-w, w) * 0.8, y - rng.randf_range(4, 26)) * u, 3.2 * u, Color(1, 1, 1, 0.9))
+		for k in 5:
+			var col: Color = [Color("ff4a4a"), Color("ffd23f"), Color("4cb8ff"), Color("ff7ad9")][rng.randi() % 4]
+			var p := Vector2(rng.randf_range(-w, w) * 0.75, y - rng.randf_range(6, 30)) * u
+			ci.draw_circle(p, 6 * u, Color(col, 0.25))
+			ci.draw_circle(p, 3 * u, col)
+	var top := Vector2(0, -26 - 3 * 34 - 54) * u
+	var star := PackedVector2Array()
+	for i in 10:
+		star.append(top + Vector2.from_angle(-PI / 2 + i * PI / 5) * (13.0 if i % 2 == 0 else 5.5) * u)
+	ci.draw_colored_polygon(star, Color("ffd23f"))
+
+
+static func _cerezo(ci: CanvasItem, u: float, rng: RandomNumberGenerator) -> void:
+	stone(ci, Vector2(0, -10) * u, 46 * u, 16 * u, Color("7a7a82"), rng)
+	limb(ci, [Vector2(0, -16), Vector2(-10, -50), Vector2(8, -86), Vector2(-4, -116)].map(func(v): return v * u),
+		[16 * u, 13 * u, 9 * u, 6 * u], Color("8a5a40"), Color("4e2f20"))
+	limb(ci, [Vector2(-6, -60), Vector2(-40, -84), Vector2(-62, -96)].map(func(v): return v * u), [8 * u, 6 * u, 4 * u], Color("8a5a40"), Color("4e2f20"))
+	limb(ci, [Vector2(4, -80), Vector2(40, -100), Vector2(60, -118)].map(func(v): return v * u), [7 * u, 5 * u, 3 * u], Color("8a5a40"), Color("4e2f20"))
+	for cl in [Vector2(-58, -104), Vector2(-30, -94), Vector2(0, -126), Vector2(30, -110), Vector2(58, -124), Vector2(-12, -96)]:
+		for k in 9:
+			var p: Vector2 = (cl + Vector2(rng.randf_range(-20, 20), rng.randf_range(-14, 14))) * u
+			var col := Color("ffb7d5").lerp(Color("ff8ab8"), rng.randf())
+			ci.draw_circle(p, rng.randf_range(5, 9) * u, col)
+			ci.draw_circle(p + Vector2(-1.5, -1.5) * u, 2.2 * u, Color(1, 1, 1, 0.7))
+	for k in 6:
+		ci.draw_circle(Vector2(rng.randf_range(-70, 70), rng.randf_range(-60, -12)) * u, 3 * u, Color("ffc6dd"))
+
+
+static func _castillo_arena(ci: CanvasItem, u: float, rng: RandomNumberGenerator) -> void:
+	var sand := Color("f0d29a")
+	var dark := Color("c8a466")
+	ci.draw_colored_polygon(ell(Vector2(0, -4) * u, 76 * u, 10 * u), dark)
+	block(ci, Rect2(-62, -62, 124, 60), u, sand, dark)
+	for x in [-62.0, 30.0]:
+		block(ci, Rect2(x, -112, 32, 52), u, sand, dark)
+		for k in 3:
+			block(ci, Rect2(x + k * 12, -122, 8, 10), u, sand, dark)
+	block(ci, Rect2(-16, -98, 32, 38), u, sand.lightened(0.05), dark)
+	for k in 3:
+		block(ci, Rect2(-16 + k * 12, -108, 8, 10), u, sand, dark)
+	window(ci, Vector2(0, -2) * u, 12 * u, 34 * u, Color("8a6a3a"))
+	ci.draw_line(Vector2(0, -108) * u, Vector2(0, -146) * u, Color("6b4428"), 2.5 * u, true)
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(0, -146) * u, Vector2(26, -139) * u, Vector2(0, -132) * u]), Color("ff4a4a"))
+	for k in 18:
+		ci.draw_circle(Vector2(rng.randf_range(-60, 60), rng.randf_range(-110, -6)) * u, 1.4 * u, dark.darkened(0.2))
+	for p in [Vector2(-48, -14), Vector2(44, -20)]:
+		ci.draw_colored_polygon(ell(p * u, 7 * u, 5 * u), Color("ffd0e0"))
+		for k in 4:
+			ci.draw_line(p * u, (p + Vector2(-5 + k * 3.3, -5)) * u, Color("e8a0b8"), 1.2 * u, true)
+
+
 static func blade(ci: CanvasItem, base: Vector2, h: float, w: float, bend: float, c0: Color, c1: Color, segs := 10) -> void:
 	var left := PackedVector2Array()
 	var right := PackedVector2Array()

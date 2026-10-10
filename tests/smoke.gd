@@ -121,6 +121,27 @@ func _process(delta: float) -> bool:
 			hud.open_equipment("filter")
 			hud.open_fish(game.fish[0].id)
 			hud._sheet._rename(game.fish[0].id)
+			hud.open_settings()
+			hud.open_tank_picker()
+			game.streak = {"n": 3, "pending": true, "last": ""}
+			hud.open_streak()
+			game.claim_streak()
+			game.level = 10
+			game._refresh_orders(Time.get_unix_time_from_system())
+			hud.open_missions(1)
+			if not game.orders.is_empty():
+				hud._sheet._pick_for_order(game.orders[0], game.fish.slice(0, 1))
+			hud.open_missions(2)
+			game.fish[0].dis = "hongos"
+			game.decor[0].g = 1.6
+			hud.open_decor_menu(0)
+			game.buy_tank_slot(game.water_kind)
+			game.switch_tank(0)
+			hud.open_fish(game.fish[0].id)
+			hud._sheet._move(game.fish[0].id)
+			hud.open_shop(0)
+			hud.open_shop(1)
+			hud.open_water_panel()
 			game.set_game_mode("realista")
 			hud.open_shop(1)
 			for i in 4:

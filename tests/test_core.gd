@@ -74,6 +74,7 @@ func _init() -> void:
 	for f in [a, b]:
 		f.health = 100.0
 		f.happy = 90.0
+		f.dis = ""
 	check(game.breed(a.id, b.id), "dos guppies adultos pueden criar")
 	check(game.eggs.size() == 1, "hay un huevo")
 	check(not game.breed(a.id, b.id), "cooldown impide criar de nuevo")
@@ -161,6 +162,84 @@ func _init() -> void:
 		for f in Catalog.SPECIES[sp].diet:
 			check(Catalog.FOODS.has(f), "%s come algo que existe (%s)" % [sp, f])
 	check(Catalog.SPECIES.gobio_fuego.diet == ["artemia"], "hay especies que solo comen un alimento")
+
+	# Convivencia, enfermedades, vejez y plantas.
+	game.new_game("normal", "dulce")
+	game._refresh_water()
+	var lonely: Dictionary = game._add_fish(Genetics.random_genes("neon", rng), 1.0, false)
+	check("Soledad" in game.fish_problems(lonely), "un neón solo echa de menos su banco")
+	game._add_fish(Genetics.random_genes("neon", rng), 1.0, false)
+	game._add_fish(Genetics.random_genes("neon", rng), 1.0, false)
+	check(not "Soledad" in game.fish_problems(lonely), "con 3 neones ya está a gusto")
+	game.fish = game.fish.slice(0, 3)
+	check(game.compat_warning("betta") == "", "un betta solo no da problemas")
+	var b1: Dictionary = game._add_fish(Genetics.random_genes("betta", rng), 1.0, false)
+	check(game.compat_warning("betta") != "", "aviso antes de comprar un segundo betta")
+	game._add_fish(Genetics.random_genes("betta", rng), 1.0, false)
+	check("Estrés" in game.fish_problems(b1), "dos bettas se estresan")
+	check(game.problem_fix(b1, "Estrés").contains("betta"), "el remedio dice quién molesta")
+	game.fish = game.fish.slice(0, 3)
+	var sick: Dictionary = game.fish[0]
+	sick.dis = "ich"
+	check("Enfermedad" in game.fish_problems(sick) and game.breed_block(sick) != "", "un pez enfermo no cría y se nota")
+	game.products.med_ich = 1
+	game.use_product("med_ich")
+	check(not "Enfermedad" in game.fish_problems(sick), "en tratamiento ya no empeora")
+	game._sim(60.0, Time.get_unix_time_from_system() + 4 * 3600.0)
+	check(sick.dis == "", "el tratamiento cura")
+	sick.born = Time.get_unix_time_from_system() - game.life_days(sick.genes.sp) * 0.9 * 86400.0
+	game._sim(60.0, Time.get_unix_time_from_system())
+	check(sick.old and game.stage_name(sick) == "Anciano" and game.breed_block(sick) != "", "los peces envejecen")
+	game.decor[0].g = 1.5
+	check(game.needs_prune(0), "una planta crecida pide poda")
+	var inv_before := int(game.decor_inv.get(game.decor[0].id, 0))
+	game.prune_decor(0)
+	check(float(game.decor[0].g) < 1.0 and int(game.decor_inv[game.decor[0].id]) == inv_before + 1, "podar da un esqueje")
+	game._grow_plants(60.0 * 24 * 5)
+	check(float(game.decor[0].g) > 1.0, "las plantas crecen con los días")
+
+	# Pedidos de clientes.
+	game.level = 1
+	game._refresh_orders(Time.get_unix_time_from_system())
+	check(game.orders.size() == 1, "llega un pedido")
+	var o: Dictionary = game.orders[0]
+	o.kind = "adult"
+	o.sp = "guppy"
+	var buyer: Dictionary = game._add_fish(Genetics.random_genes("guppy", rng), 1.0, false)
+	var c0: int = game.coins
+	check(game.deliver_order(int(o.id), int(buyer.id)) and game.coins > c0 and game.orders.is_empty(), "entregar un pedido paga y se lleva el pez")
+
+	# Varias peceras, mudanzas y guardado.
+	game.level = 4
+	game.coins = 5000
+	var moving: Dictionary = game.fish[0]
+	check(game.buy_tank_slot("salada") and game.tanks.size() == 2 and game.active == 1 and game.fish.is_empty() and game.water_kind == "salada", "comprar una segunda pecera")
+	game.switch_tank(0)
+	check(game.water_kind == "dulce" and game.fish.has(moving), "volver a la primera")
+	check(game.move_fish(int(moving.id), 1) != "", "un pez de agua dulce no se muda a una salada")
+	game.save_path = "user://test_save.json"
+	game.save_game()
+	var game2: Node = load("res://scripts/game.gd").new()
+	game2._build_weights()
+	game2.save_path = "user://test_save.json"
+	check(game2.load_game() and game2.tanks.size() == 2 and game2.fish.size() == game.fish.size(), "el guardado conserva las dos peceras")
+	game2.free()
+
+	# Avisos para cuando la app está cerrada.
+	game.eggs.append({"id": 999, "genes": Genetics.random_genes("guppy", rng), "hatch_at": Time.get_unix_time_from_system() + 900.0, "total": 900.0, "x": 0.5})
+	var ids: Array = game.upcoming_notifications().map(func(it): return it[0])
+	check(2 in ids and 4 in ids and game.upcoming_notifications().all(func(it): return it[3] > 0), "se programan avisos (huevo, racha...)")
+	game.eggs.clear()
+
+	# Racha diaria.
+	game.streak = {"last": Time.get_date_string_from_unix_time(int(Time.get_unix_time_from_system()) - 86400), "n": 6}
+	game.daily = {}
+	game._check_daily()
+	check(int(game.streak.n) == 7 and game.streak.pending, "la racha sube si jugaste ayer")
+	var eggs0: int = game.eggs.size()
+	game.claim_streak()
+	check(game.eggs.size() == eggs0 + 1 or game.pearls > 0, "el 7º día trae un huevo misterioso")
+	check(not game.streak.pending, "la racha se cobra una vez")
 
 	# Modo Relax: ni algas ni desgaste ni parámetros.
 	game.new_game("basico", "dulce")

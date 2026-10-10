@@ -139,6 +139,11 @@ func _show_detail(id: int) -> void:
 		sv.add_child(h)
 	if f.grow < 1.0:
 		sv.add_child(UI.label("Creciendo: %d%%  (los gránulos aceleran)" % int(f.grow * 100.0), 21, UI.MUTED, UI.bold))
+	sv.add_child(UI.label("Edad: %d días · vive unos %d%s" % [Game.age_days(f), int(Game.life_days(f.genes.sp)),
+		" · es anciano" if f.get("old", false) else ""], 20, UI.MUTED, UI.bold))
+	if f.get("dis", "") != "" and float(f.get("cure_at", 0.0)) > 0.0:
+		sv.add_child(UI.label("En tratamiento: %s (se cura en %s)" % [Catalog.DISEASES[f.dis].name.to_lower(),
+			Game.fmt_duration(float(f.cure_at) - Time.get_unix_time_from_system())], 20, UI.TEAL_D, UI.bold))
 	var probs := Game.fish_problems(f)
 	for p in probs:
 		sv.add_child(UI.wrap(UI.label("• " + Game.problem_fix(f, p), 21, UI.BAD, UI.bold)))
@@ -181,6 +186,24 @@ func _show_detail(id: int) -> void:
 		_show_list())
 	actions.add_child(sell)
 	v.add_child(actions)
+	var more := UI.hbox(12)
+	var deliverable: Array = Game.orders.filter(func(o): return Game.order_matches(o, f))
+	if not deliverable.is_empty():
+		var o: Dictionary = deliverable[0]
+		var give := UI.price_button(int(o.coins), "coins", "Pedido de %s" % String(o.who).get_slice(" ", 0))
+		give.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		give.pressed.connect(func():
+			Game.deliver_order(int(o.id), id)
+			_show_list())
+		more.add_child(give)
+	if Game.tanks.size() > 1:
+		var mv := UI.button("Mudar a otra pecera", UI.LAV, UI.LAV_D)
+		mv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mv.custom_minimum_size.y = 62
+		mv.pressed.connect(_move.bind(id))
+		more.add_child(mv)
+	if more.get_child_count() > 0:
+		v.add_child(more)
 
 
 func _show_partners(id: int) -> void:
@@ -262,3 +285,22 @@ func _rename(id: int) -> void:
 	m.box.add_child(ok)
 	get_parent()._show_modal(m)
 	line.grab_focus.call_deferred()
+
+
+func _move(id: int) -> void:
+	var m := Modal.new()
+	m.centered(UI.title("¿A qué pecera?", 36))
+	for i in Game.tanks.size():
+		if i == Game.active:
+			continue
+		var t: Dictionary = Game.tanks[i]
+		var b := UI.button("%s · %s · sitio %d" % [t.tank_name, Catalog.WATER_NAMES[t.water_kind], Game.tank_space(i)])
+		b.pressed.connect(func():
+			var err := Game.move_fish(id, i)
+			m.close()
+			if err != "":
+				Game.toast.emit(err, "tank")
+			else:
+				_show_list())
+		m.box.add_child(b)
+	get_parent()._show_modal(m)

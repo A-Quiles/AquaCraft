@@ -13,7 +13,11 @@ signal floor_changed
 signal level_up(level: int)
 
 var save_path := "user://save.json"   ## demo usa otro fichero para no pisar la partida
-const SAVE_VERSION := 2              ## 2: se añadió la pecera redonda al principio (tier +1)
+const SAVE_VERSION := 3              ## 2: pecera redonda al principio (tier +1) · 3: varias peceras
+## Lo que es propio de cada pecera (el resto —dinero, nivel, inventario...— es común).
+const TANK_FIELDS := ["tank_name", "tank_tier", "water_kind", "salinity", "equipment", "equip_cond", "equip_pos", "heater_target",
+	"water_temp", "substrate", "decor", "terrain", "floor_dirt", "fish", "eggs", "algae", "ph_adjust", "algae_block_until",
+	"o2_until", "last_sim"]
 const GW := 40                       ## rejilla de algas del cristal
 const GH := 60
 const ROOM_TEMP := 23.0
@@ -57,6 +61,13 @@ var story_idx := 0
 var next_id := 1
 var last_sim := 0.0
 var started := false                 ## false hasta terminar o saltar el tutorial
+var tank_name := "Pecera 1"
+var tanks: Array = []                ## una entrada (TANK_FIELDS) por pecera; la activa se vuelca al guardar/cambiar
+var active := 0
+var orders: Array = []               ## pedidos de clientes
+var next_order_at := 0.0
+var streak := {}                     ## racha diaria: last (fecha), n (días), pending (premio sin cobrar)
+var settings := {"music": true, "sfx": true, "vibration": true, "notify": true}
 
 var rng := RandomNumberGenerator.new()
 var _weights := PackedFloat32Array()
@@ -125,13 +136,12 @@ func _demo(tier: int) -> void:
 	fish = []
 	var r := RandomNumberGenerator.new()
 	r.seed = 10 + tier
-	var pool := [["guppy", 0], ["guppy", 1], ["neon", 0], ["neon", 0], ["betta", 1], ["goldfish", 0],
-		["rainbow", 0], ["angelfish", 0], ["discus", 1], ["molly", 0], ["corydoras", 0], ["discus", 0],
-		["rainbow", 1], ["betta", 2], ["goldfish", 1], ["angelfish", 1]]
+	var pool := [["guppy", 0], ["platy", 1], ["neon", 0], ["neon", 0], ["neon", 0], ["gurami", 1], ["ramirezi", 0],
+		["pleco", 0], ["discus", 1], ["danio", 0], ["danio", 0], ["danio", 0], ["betta", 2], ["angelfish", 0], ["goldfish", 0], ["rasbora", 0]]
 	if marine:
-		pool = [["payaso", 0], ["payaso", 0], ["gramma", 0], ["cirujano_azul", 0], ["gobio_fuego", 0], ["cirujano_amarillo", 0],
-			["angel_llama", 0], ["payaso", 1], ["gramma", 1], ["cirujano_azul", 1], ["gobio_fuego", 0], ["angel_llama", 1],
-			["cirujano_amarillo", 0], ["payaso", 2], ["gramma", 0], ["cirujano_azul", 0]]
+		pool = [["payaso", 0], ["payaso", 0], ["banggai", 0], ["cirujano_azul", 0], ["mandarin", 0], ["pez_cofre", 0],
+			["emperador", 0], ["limpiador", 0], ["gramma", 1], ["cirujano_amarillo", 0], ["gobio_fuego", 0], ["angel_llama", 1],
+			["payaso", 2], ["banggai", 1], ["gramma", 0], ["damisela", 0]]
 	for i in [3, 5, 9, 14, 16][tank_tier]:
 		var f := _add_fish(Genetics.random_genes(pool[i][0], r, pool[i][1]), 1.0, i % 3 == 0)
 		f.hunger = 20.0 if i != 2 else 75.0
@@ -140,8 +150,10 @@ func _demo(tier: int) -> void:
 		algae[i] = int(wts[i] * 10.0)
 	daily = {}
 	_check_daily()
+	streak.pending = false
 	started = true
 	last_sim = Time.get_unix_time_from_system()
+	tanks = [_snapshot()]
 
 
 func _process(delta: float) -> void:
@@ -159,6 +171,7 @@ func _process(delta: float) -> void:
 		_grow_floor(gap)
 	last_sim = now
 	_check_daily()
+	_refresh_orders(now)
 	_safety_net()
 	changed.emit()
 	_save_acc += 1.0
@@ -170,55 +183,88 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT \
 			or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		save_game()
+		_schedule_notifications()
+	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		var n := _notifier()
+		if n:
+			n.cancelAll()
 
 
 # ───────────────────────── Partida nueva / guardado ─────────────────────────
 
 func new_game(game_mode := "normal", water_type := "dulce") -> void:
 	mode = game_mode
-	water_kind = water_type
-	salinity = 1.0245
 	coins = 250
 	pearls = 5
 	level = 1
 	xp = 0
+	owned_substrates = []
+	decor_inv = {}
+	equip_inv = {}
+	food = {"granulos": 5, "artemia": 6, "nori": 4 if water_type == "salada" else 0}
+	products = {"ph_up": 1, "ph_down": 1, "oxigeno": 1, "sal": 1 if water_type == "salada" else 0, "antialgas": 1}
+	stats = {}
+	discovered = {}
+	story_idx = 0
+	started = false
+	orders = []
+	next_order_at = 0.0
+	streak = {}
+	_init_tank(water_type, "Pecera 1", true)
+	for sp in (["payaso", "payaso", "gramma"] if water_type == "salada" else ["guppy", "guppy", "platy"]):
+		_add_fish(Genetics.random_genes(sp, rng), 1.0, false)
+	tanks = [_snapshot()]
+	active = 0
+	daily = {}
+	_check_daily()
+	_dirty = true
+
+
+## Pecera nueva: redonda, sin aparatos. starter = con la decoración de bienvenida.
+func _init_tank(water_type: String, nm: String, starter: bool) -> void:
+	tank_name = nm
+	water_kind = water_type
+	salinity = 1.0245
 	tank_tier = 0
 	var marine := water_kind == "salada"
 	# Se empieza con una pecera redonda y sin ningún aparato: hay que ir comprándolos.
 	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
 	equip_cond = {}
 	equip_pos = {}
-	equip_inv = {}
 	terrain = []
 	floor_dirt = []
 	o2_until = 0.0
+	heater_target = 25.0
 	substrate = "aragonita" if marine else "grava"
-	owned_substrates = [substrate]
-	decor = [_decor_entry("roca_viva", 0.25), _decor_entry("anemona", 0.7)] if marine \
-		else [_decor_entry("vallisneria", 0.2), _decor_entry("rocas", 0.68)]
-	decor_inv = {}
-	food = {"granulos": 5, "artemia": 6, "nori": 4 if marine else 0}
-	products = {"ph_up": 1, "ph_down": 1, "oxigeno": 1, "sal": 1 if marine else 0, "antialgas": 1}
+	if not substrate in owned_substrates:
+		owned_substrates.append(substrate)
+	decor = []
+	if starter:
+		decor = [_decor_entry("roca_viva", 0.25), _decor_entry("anemona", 0.7)] if marine \
+			else [_decor_entry("vallisneria", 0.2), _decor_entry("rocas", 0.68)]
 	ph_adjust = 0.0
 	algae_block_until = 0.0
 	fish = []
 	eggs = []
-	stats = {}
-	discovered = {}
-	story_idx = 0
-	started = false
 	algae = PackedByteArray()
 	algae.resize(GW * GH)
 	var wts := algae_weights()
 	for i in algae.size():
 		algae[i] = int(clampf(wts[i] * 55.0 * float(mk("algae") > 0.0), 0.0, 255.0))
 	water_temp = _temp_target()
-	for sp in (["payaso", "payaso", "gramma"] if marine else ["guppy", "guppy", "neon"]):
-		_add_fish(Genetics.random_genes(sp, rng), 1.0, false)
 	last_sim = Time.get_unix_time_from_system()
-	daily = {}
-	_check_daily()
-	_dirty = true
+
+
+func _snapshot() -> Dictionary:
+	var d := {}
+	for k in TANK_FIELDS:
+		d[k] = get(k)
+	return d
+
+
+func _apply(d: Dictionary) -> void:
+	for k in TANK_FIELDS:
+		set(k, d[k])
 
 
 ## Valor del modo de juego actual (Catalog.MODES).
@@ -286,16 +332,20 @@ func convert_water() -> bool:
 
 func save_game() -> void:
 	_save_acc = 0.0
+	if tanks.is_empty():
+		tanks = [_snapshot()]
+	tanks[active] = _snapshot()
+	var enc: Array = []
+	for t in tanks:
+		var c: Dictionary = t.duplicate()
+		c.algae = Marshalls.raw_to_base64(t.algae)
+		enc.append(c)
 	var data := {
-		"v": SAVE_VERSION, "mode": mode, "water": water_kind, "salinity": salinity, "coins": coins, "pearls": pearls, "level": level, "xp": xp,
-		"tank_tier": tank_tier, "equipment": equipment, "equip_cond": equip_cond, "equip_pos": equip_pos, "heater_target": heater_target,
-		"water_temp": water_temp, "substrate": substrate, "owned_substrates": owned_substrates,
-		"decor": decor, "decor_inv": decor_inv, "terrain": terrain, "floor_dirt": floor_dirt, "equip_inv": equip_inv,
-		"o2_until": o2_until, "show_names": show_names, "food": food, "products": products, "ph_adjust": ph_adjust,
-		"algae_block_until": algae_block_until, "fish": fish, "eggs": eggs,
-		"algae": Marshalls.raw_to_base64(algae), "stats": stats, "discovered": discovered,
-		"daily": daily, "story_idx": story_idx, "next_id": next_id, "last_sim": last_sim,
-		"started": started,
+		"v": SAVE_VERSION, "mode": mode, "coins": coins, "pearls": pearls, "level": level, "xp": xp,
+		"owned_substrates": owned_substrates, "decor_inv": decor_inv, "equip_inv": equip_inv, "show_names": show_names,
+		"food": food, "products": products, "stats": stats, "discovered": discovered, "daily": daily,
+		"story_idx": story_idx, "next_id": next_id, "started": started, "tanks": enc, "active": active,
+		"orders": orders, "next_order_at": next_order_at, "streak": streak, "settings": settings,
 	}
 	# Escritura atómica: si la app muere a mitad, el guardado anterior sigue intacto.
 	var tmp := save_path + ".tmp"
@@ -317,45 +367,24 @@ func load_game() -> bool:
 		return false
 	var text := FileAccess.get_file_as_string(save_path)
 	var d = JSON.parse_string(text)
-	if typeof(d) != TYPE_DICTIONARY or not d.has("fish"):
+	if typeof(d) != TYPE_DICTIONARY or not (d.has("fish") or d.has("tanks")):
 		# Guardado corrupto: lo apartamos en vez de borrarlo.
 		DirAccess.rename_absolute(ProjectSettings.globalize_path(save_path), ProjectSettings.globalize_path(save_path + ".bad"))
 		return false
+	var v := int(d.get("v", 1))
 	mode = d.get("mode", "normal")
-	water_kind = d.get("water", "dulce")
-	salinity = float(d.get("salinity", 1.0245))
 	coins = int(d.coins)
 	pearls = int(d.pearls)
 	level = int(d.level)
 	xp = int(d.xp)
-	tank_tier = int(d.tank_tier)
-	if int(d.get("v", 1)) < 2:
-		tank_tier += 1                     # la pecera redonda se añadió delante de la Nano
-	terrain = d.get("terrain", [])
-	floor_dirt = d.get("floor_dirt", [])
 	equip_inv = d.get("equip_inv", {})
 	for k in equip_inv:
 		equip_inv[k] = int(equip_inv[k])
-	o2_until = float(d.get("o2_until", 0.0))
 	show_names = bool(d.get("show_names", false))
-	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
-	equipment.merge(d.equipment, true)
-	equip_cond = d.get("equip_cond", {})
-	equip_pos = d.get("equip_pos", {})
-	heater_target = float(d.heater_target)
-	water_temp = float(d.water_temp)
-	substrate = d.substrate
 	owned_substrates = d.owned_substrates
-	decor = []
-	var old: Array = d.decor
-	for i in old.size():
-		# Partidas antiguas guardaban solo el id.
-		decor.append(old[i] if old[i] is Dictionary else _decor_entry(old[i], 0.12 + 0.76 * i / maxf(1.0, old.size() - 1.0)))
 	products = d.get("products", {"ph_up": 1, "ph_down": 1, "antialgas": 1})
 	for k in products:
 		products[k] = int(products[k])
-	ph_adjust = float(d.get("ph_adjust", 0.0))
-	algae_block_until = float(d.get("algae_block_until", 0.0))
 	decor_inv = d.get("decor_inv", {})
 	for k in decor_inv:
 		decor_inv[k] = int(decor_inv[k])
@@ -367,25 +396,67 @@ func load_game() -> bool:
 	daily = d.daily
 	story_idx = int(d.story_idx)
 	next_id = int(d.next_id)
-	last_sim = float(d.last_sim)
 	started = bool(d.get("started", true))
-	algae = Marshalls.base64_to_raw(d.algae)
-	if algae.size() != GW * GH:
-		algae.resize(GW * GH)
-	fish = d.fish
-	for f in fish:
-		f.id = int(f.id)
-		Genetics.normalize(f.genes)
-	eggs = d.eggs
-	for e in eggs:
-		e.id = int(e.id)
-		Genetics.normalize(e.genes)
+	orders = d.get("orders", [])
+	next_order_at = float(d.get("next_order_at", 0.0))
+	streak = d.get("streak", {})
+	settings.merge(d.get("settings", {}), true)
+	# Partidas de una sola pecera guardaban sus datos sueltos en la raíz.
+	var list: Array = d.tanks if d.has("tanks") else [d]
+	tanks = []
+	for i in list.size():
+		_read_tank(list[i], v, i)
+		tanks.append(_snapshot())
+	active = clampi(int(d.get("active", 0)), 0, tanks.size() - 1)
+	_apply(tanks[active])
 	_refresh_water()
 	var gap := Time.get_unix_time_from_system() - last_sim
 	if gap > 5.0:
 		_catch_up(gap)
 	last_sim = Time.get_unix_time_from_system()
 	return true
+
+
+## Datos de una pecera desde el JSON (con valores por defecto para guardados antiguos).
+func _read_tank(td: Dictionary, v: int, i: int) -> void:
+	tank_name = td.get("tank_name", "Pecera %d" % (i + 1))
+	water_kind = td.get("water_kind", td.get("water", "dulce"))
+	salinity = float(td.get("salinity", 1.0245))
+	tank_tier = int(td.tank_tier)
+	if v < 2:
+		tank_tier += 1                     # la pecera redonda se añadió delante de la Nano
+	terrain = td.get("terrain", [])
+	floor_dirt = td.get("floor_dirt", [])
+	o2_until = float(td.get("o2_until", 0.0))
+	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
+	equipment.merge(td.equipment, true)
+	equip_cond = td.get("equip_cond", {})
+	equip_pos = td.get("equip_pos", {})
+	heater_target = float(td.heater_target)
+	water_temp = float(td.water_temp)
+	substrate = td.substrate
+	decor = []
+	var old: Array = td.decor
+	for k in old.size():
+		# Partidas antiguas guardaban solo el id.
+		decor.append(old[k] if old[k] is Dictionary else _decor_entry(old[k], 0.12 + 0.76 * k / maxf(1.0, old.size() - 1.0)))
+	ph_adjust = float(td.get("ph_adjust", 0.0))
+	algae_block_until = float(td.get("algae_block_until", 0.0))
+	last_sim = float(td.last_sim)
+	algae = Marshalls.base64_to_raw(td.algae) if td.algae is String else td.algae
+	if algae.size() != GW * GH:
+		algae.resize(GW * GH)
+	fish = td.fish
+	var now := Time.get_unix_time_from_system()
+	for f in fish:
+		f.id = int(f.id)
+		Genetics.normalize(f.genes)
+		if not f.has("born"):
+			f.born = now - life_days(f.genes.sp) * 0.2 * 86400.0 * f.grow
+	eggs = td.eggs
+	for e in eggs:
+		e.id = int(e.id)
+		Genetics.normalize(e.genes)
 
 
 func reset_game() -> void:
@@ -442,11 +513,17 @@ func _sim(dt: float, now: float) -> void:
 	# Estando fuera nadie muere (en Realista vuelven muy débiles); jugando, en Realista sí pueden morir.
 	var floor_hp := (10.0 if death else 25.0) if _offline_floor else (0.0 if death else 5.0)
 	var dead: Array = []
+	var dis_mult := float(mk("disease"))
+	var cleaner := fish.any(func(o): return Catalog.SPECIES[o.genes.sp].get("cleaner", false))
 	for f in fish:
+		var sp: Dictionary = Catalog.SPECIES[f.genes.sp]
 		var problems := fish_problems(f).size()
 		f.hunger = minf(100.0, f.hunger + HUNGER_PER_MIN * float(mk("hunger")) * m)
 		f.problems = problems
 		var hp_delta := 0.15 if problems == 0 else -0.04 * problems * (1.5 if death else 1.0)
+		var dis: String = f.get("dis", "")
+		if dis != "" and float(f.get("cure_at", 0.0)) <= 0.0:
+			hp_delta -= 0.04                       # una enfermedad sin tratar pesa el doble
 		f.health = clampf(f.health + hp_delta * m, minf(floor_hp, f.health), 100.0)
 		if death and f.health <= 0.0:
 			dead.append(f)
@@ -454,12 +531,42 @@ func _sim(dt: float, now: float) -> void:
 		f.happy = move_toward(f.happy, happy_target, 1.5 * m)
 		if f.grow < 1.0:
 			var speed := 1.0 if f.health > 40.0 else 0.3
-			f.grow = minf(1.0, f.grow + dt / float(Catalog.SPECIES[f.genes.sp].grow) * speed)
+			f.grow = minf(1.0, f.grow + dt / float(sp.grow) * speed)
+		# Enfermedades: más riesgo con agua sucia, parámetros malos o estrés. Se curan con su tratamiento.
+		if dis == "":
+			var risk := (0.001 + 0.004 * problems + (0.004 if maxf(w.dirt, w.waste) > 55.0 else 0.0)) * dis_mult
+			if rng.randf() < risk * m / 60.0:
+				var pick: String = ["ich", "ich", "hongos", "aletas"][rng.randi() % 4]
+				if pick == "ich" and cleaner:
+					pick = "hongos" if rng.randf() < 0.3 else ""
+				if pick != "":
+					f.dis = pick
+					f.erase("cure_at")
+					toast.emit("%s tiene %s. Mira su ficha." % [f.name, Catalog.DISEASES[pick].name.to_lower()], "health")
+		elif float(f.get("cure_at", 0.0)) > 0.0:
+			if now >= float(f.cure_at):
+				f.dis = ""
+				f.erase("cure_at")
+				toast.emit("%s se ha curado" % f.name, "sparkle")
+		elif Catalog.DISEASES[dis].spread and rng.randf() < 0.06 * m / 60.0:
+			var healthy := fish.filter(func(o): return o.get("dis", "") == "")
+			if not healthy.is_empty():
+				healthy[rng.randi() % healthy.size()].dis = dis
+		# Vejez: después del 80% de su vida es anciano; en Realista puede morir de viejo (solo jugando).
+		var age := age_days(f)
+		f.old = age > life_days(f.genes.sp) * 0.8
+		if death and not _offline_floor and age > life_days(f.genes.sp) and rng.randf() < 0.1 * m / 60.0 and not f in dead:
+			dead.append(f)
+			f.old_death = true
 	for f in dead:
 		fish.erase(f)
 		stats.deaths = int(stats.get("deaths", 0)) + 1
 		fish_removed.emit(f.id)
-		toast.emit("%s ha muerto. Revisa los parámetros del agua." % f.name, "health")
+		if f.get("old_death", false):
+			toast.emit("%s ha muerto de viejo tras %d días. Fue una vida larga." % [f.name, age_days(f)], "health")
+		else:
+			toast.emit("%s ha muerto. Revisa los parámetros del agua." % f.name, "health")
+	_grow_plants(m)
 	var hatched := false
 	for e in eggs.duplicate():
 		if now >= e.hatch_at:
@@ -492,6 +599,62 @@ func fish_problems(f: Dictionary) -> Array:
 	if maxf(w.dirt, w.waste) > (60.0 if mode == "realista" else 70.0): out.append("Suciedad")
 	if s.water == "salada" and (salinity < Catalog.SALINITY[0] - 0.001 * tol or salinity > Catalog.SALINITY[1] + 0.001 * tol):
 		out.append("Salinidad")
+	if f.get("dis", "") != "" and float(f.get("cure_at", 0.0)) <= 0.0:
+		out.append("Enfermedad")
+	if s.has("school") and same_species(f) < int(s.school):
+		out.append("Soledad")
+	if stress_by(f) != "":
+		out.append("Estrés")
+	return out
+
+
+func same_species(f: Dictionary) -> int:
+	var n := 0
+	for o in fish:
+		n += int(o.genes.sp == f.genes.sp)
+	return n
+
+
+## Quién le hace la vida imposible a este pez ("" si nadie): rivales, matones, mordedores o depredadores.
+func stress_by(f: Dictionary) -> String:
+	var s: Dictionary = Catalog.SPECIES[f.genes.sp]
+	for o in fish:
+		if o.id == f.id:
+			continue
+		var os: Dictionary = Catalog.SPECIES[o.genes.sp]
+		if o.genes.sp == f.genes.sp:
+			if s.get("solo", false):
+				return "otro %s" % s.name.to_lower()
+			continue
+		if os.get("aggr", false) and not s.get("aggr", false):
+			return os.name
+		if os.get("nipper", false) and (s.shape.tail in [3, 5] or f.genes.veil or s.shape.get("thr", 0.0) > 0.3):
+			return os.name
+		if os.get("predator", false) and float(s.shape.px) <= 62.0:
+			return os.name
+	return ""
+
+
+## Aviso antes de comprar una especie: con quién no se llevaría bien en esta pecera ("" si con nadie).
+func compat_warning(sp: String) -> String:
+	var s: Dictionary = Catalog.SPECIES[sp]
+	var probe := {"id": -1, "genes": {"sp": sp, "veil": false}}
+	fish.append(probe)
+	var out := ""
+	if s.get("solo", false) and same_species(probe) > 1:
+		out = "Ya tienes un %s: se pelearán." % s.name.to_lower()
+	else:
+		for o in fish:
+			if o.id != -1 and stress_by(o) == s.name:
+				out = "Molestará a tu %s." % Catalog.SPECIES[o.genes.sp].name.to_lower()
+				break
+		if out == "":
+			var by := stress_by(probe)
+			if by != "":
+				out = "Lo molestará: %s." % by.to_lower()
+	fish.erase(probe)
+	if out == "" and s.has("school") and same_species({"genes": {"sp": sp}}) + 1 < int(s.school):
+		out = "Va en grupo: compra al menos %d." % int(s.school)
 	return out
 
 
@@ -512,6 +675,11 @@ func problem_fix(f: Dictionary, p: String) -> String:
 			if salinity > Catalog.SALINITY[1]:
 				return "Salinidad alta: repón agua dulce (bote de Agua)."
 			return "Salinidad baja: añade sal marina (bote de Agua)."
+		"Enfermedad":
+			var d: Dictionary = Catalog.DISEASES[f.dis]
+			return "%s: %s Usa %s (bote de Agua)." % [d.name, d.desc, Catalog.PRODUCTS[d.med].name.to_lower()]
+		"Soledad": return "Soledad: es pez de banco, quiere al menos %d de su especie." % int(s.school)
+		"Estrés": return "Estrés: le molesta %s. Sepáralos en otra pecera o vende uno." % stress_by(f).to_lower()
 	return p
 
 
@@ -868,6 +1036,7 @@ func _add_fish(genes: Dictionary, grow: float, bred: bool) -> Dictionary:
 		"id": next_id, "name": Catalog.NAMES[rng.randi() % Catalog.NAMES.size()],
 		"genes": genes, "grow": grow, "hunger": 25.0, "health": 95.0, "happy": 70.0,
 		"cd": 0.0, "bred": bred, "problems": 0,
+		"born": Time.get_unix_time_from_system() - life_days(genes.sp) * 0.15 * 86400.0 * grow,
 	}
 	next_id += 1
 	fish.append(f)
@@ -882,6 +1051,15 @@ func _add_fish(genes: Dictionary, grow: float, bred: bool) -> Dictionary:
 	fish_added.emit(f)
 	_dirty = true
 	return f
+
+
+func life_days(sp: String) -> float:
+	var s: Dictionary = Catalog.SPECIES[sp]
+	return float(s.get("life", 40 + s.price / 3))
+
+
+func age_days(f: Dictionary) -> int:
+	return int((Time.get_unix_time_from_system() - float(f.get("born", Time.get_unix_time_from_system()))) / 86400.0)
 
 
 func get_fish(id: int) -> Dictionary:
@@ -900,12 +1078,16 @@ func space_left() -> int:
 
 
 func stage_name(f: Dictionary) -> String:
+	if f.get("old", false):
+		return "Anciano"
 	return "Alevín" if f.grow < 0.35 else ("Joven" if f.grow < 1.0 else "Adulto")
 
 
 ## Devuelve "" si puede criar, o el motivo por el que no.
 func breed_block(f: Dictionary) -> String:
 	if f.grow < 1.0: return "Aún no es adulto"
+	if f.get("old", false): return "Es demasiado mayor"
+	if f.get("dis", "") != "": return "Está enfermo"
 	if f.health < 60.0: return "Salud baja"
 	if f.happy < 50.0: return "No está feliz"
 	if Time.get_unix_time_from_system() < f.cd: return "Descansando %s" % fmt_duration(f.cd - Time.get_unix_time_from_system())
@@ -1212,6 +1394,8 @@ func buy_decor(id: String) -> void:
 	var d: Dictionary = Catalog.DECOR[id]
 	if not Catalog.fits(d, water_kind):
 		return
+	if d.has("event") and current_event().get("id", "") != d.event:
+		return
 	if not spend(d.price, d.cur):
 		return
 	decor_inv[id] = int(decor_inv.get(id, 0)) + 1
@@ -1255,6 +1439,11 @@ func use_product(id: String) -> bool:
 		"ph_down": ph_adjust = maxf(ph_adjust - 0.3, -1.2)
 		"oxigeno": o2_until = Time.get_unix_time_from_system() + 12.0 * 3600.0
 		"sal": salinity = minf(1.035, salinity + 0.002)
+		"med_ich", "med_hongos", "med_bact":
+			var now := Time.get_unix_time_from_system()
+			for f in fish:
+				if f.get("dis", "") != "" and Catalog.DISEASES[f.dis].med == id:
+					f.cure_at = now + 3.0 * 3600.0
 		"antialgas":
 			for i in algae.size():
 				algae[i] = int(algae[i] * 0.6)
@@ -1314,6 +1503,11 @@ func _check_daily() -> void:
 		missions.append({"id": t.id, "text": t.text % target, "target": target, "progress": 0,
 			"claimed": false, "coins": t.coins + 10 * level, "xp": t.xp})
 	daily = {"date": today, "missions": missions, "bonus": false, "offers_bought": []}
+	# Racha: si ayer también jugaste, sube; si no, vuelve a 1. El premio se cobra desde el aviso.
+	var yesterday := Time.get_date_string_from_unix_time(int(Time.get_unix_time_from_system()) - 86400)
+	streak.n = int(streak.get("n", 0)) + 1 if streak.get("last", "") == yesterday else 1
+	streak.last = today
+	streak.pending = true
 	_dirty = true
 
 
@@ -1388,6 +1582,9 @@ func has_claimable() -> bool:
 	for m in daily.get("missions", []):
 		if not m.claimed and m.progress >= m.target:
 			return true
+	for o in orders:
+		if fish.any(func(f): return order_matches(o, f)):
+			return true
 	return false
 
 
@@ -1407,3 +1604,376 @@ func fmt_duration(s: float) -> String:
 	if s < 86400.0: return "%d h %d min" % [int(s / 3600.0), int(fmod(s, 3600.0) / 60.0)]
 	return "%d d %d h" % [int(s / 86400.0), int(fmod(s, 86400.0) / 3600.0)]
 
+
+
+# ───────────────────────── Plantas que crecen ─────────────────────────
+
+func plant_grows(id: String) -> bool:
+	return Catalog.DECOR[id].kind == "plant" and not id in ["planta_rosa", "anemona"]
+
+
+## Las plantas vivas crecen ~6% al día (más con luz y tierra nutritiva). Pasado el 130% piden poda.
+func _grow_plants(m: float) -> void:
+	var k := (1.0 if equipment.light != "" else 0.55) * (1.5 if substrate == "tierra" else 1.0)
+	for it in decor:
+		if plant_grows(it.id):
+			it.g = minf(1.9, float(it.get("g", 1.0)) + 0.06 / 1440.0 * m * k)
+
+
+func needs_prune(i: int) -> bool:
+	return plant_grows(decor[i].id) and float(decor[i].get("g", 1.0)) >= 1.3
+
+
+## Podar: la planta vuelve a un tamaño cómodo y el esqueje va al inventario (se planta o se vende).
+func prune_decor(i: int) -> void:
+	if i < 0 or i >= decor.size() or not needs_prune(i):
+		return
+	var id: String = decor[i].id
+	decor[i].g = 0.9
+	decor_inv[id] = int(decor_inv.get(id, 0)) + 1
+	_bump("pruned", 1)
+	add_xp(4)
+	toast.emit("Podada. Tienes un esqueje de %s en el inventario" % Catalog.DECOR[id].name.to_lower(), "plant")
+	_decor_changed()
+
+
+# ───────────────────────── Pedidos de clientes ─────────────────────────
+
+func _refresh_orders(now: float) -> void:
+	var before := orders.size()
+	orders = orders.filter(func(o): return float(o.expires) > now)
+	if orders.size() < 3 and (now >= next_order_at or orders.is_empty()):
+		var o := _new_order(now)
+		if not o.is_empty():
+			orders.append(o)
+		next_order_at = now + 2.0 * 3600.0
+	if orders.size() != before:
+		_dirty = true
+
+
+func _new_order(now: float) -> Dictionary:
+	var waters := {}
+	for t in tanks:
+		waters[t.water_kind] = true
+	waters[water_kind] = true
+	var pool: Array = []
+	for sp in Catalog.SPECIES_ORDER:
+		var s: Dictionary = Catalog.SPECIES[sp]
+		if s.level <= level + 1 and waters.has(s.water):
+			pool.append(sp)
+	if pool.is_empty():
+		return {}
+	var sp: String = pool[rng.randi() % pool.size()]
+	var s: Dictionary = Catalog.SPECIES[sp]
+	var kinds := ["adult"]
+	if level >= 2: kinds += ["color", "pattern"]
+	if level >= 4: kinds.append("mut")
+	if level >= 5: kinds.append("rarity")
+	var kind: String = kinds[rng.randi() % kinds.size()]
+	var o := {"id": next_id, "who": Catalog.CUSTOMERS[rng.randi() % Catalog.CUSTOMERS.size()], "sp": sp, "kind": kind,
+		"expires": now + 24.0 * 3600.0}
+	next_id += 1
+	var mult := 1.6
+	match kind:
+		"color":
+			var fams: Array = []
+			for pr in s.presets:
+				var c := Color.html(pr[0])
+				if c.s > 0.35 and not color_family(c.h) in fams:
+					fams.append(color_family(c.h))
+			if fams.is_empty():
+				o.kind = "adult"
+			else:
+				o.color = fams[rng.randi() % fams.size()]
+				mult = 2.0
+		"pattern":
+			o.pat = int(s.patterns[rng.randi() % s.patterns.size()])
+			if s.patterns.size() < 2:
+				o.kind = "adult"
+			else:
+				mult = 2.0
+		"mut":
+			o.mut = ["neon", "albino", "veil", "rare_col", "giant"][rng.randi() % 5]
+			mult = 3.5
+			o.pearls = 2
+		"rarity":
+			mult = 4.0
+			o.pearls = 3
+	o.coins = int(s.price * mult * (1.0 + level * 0.04))
+	o.xp = int(10 + mult * 8)
+	return o
+
+
+static func color_family(h: float) -> int:
+	if h < 0.03 or h >= 0.95: return 0
+	if h < 0.11: return 1
+	if h < 0.19: return 2
+	if h < 0.45: return 3
+	if h < 0.7: return 4
+	if h < 0.83: return 5
+	return 6
+
+
+func order_text(o: Dictionary) -> String:
+	var n: String = Catalog.SPECIES[o.sp].name
+	match o.kind:
+		"color": return "%s adulto de color %s" % [n, Catalog.COLOR_NAMES[o.color]]
+		"pattern": return "%s adulto con patrón %s" % [n, Catalog.PATTERN_NAMES[o.pat].to_lower()]
+		"mut": return "%s adulto con mutación %s" % [n, {"neon": "Neón", "albino": "Albino", "veil": "Velo", "rare_col": "Color raro", "giant": "Gigante"}[o.mut]]
+		"rarity": return "%s adulto Raro o mejor" % n
+	return "Un %s adulto y sano" % n.to_lower()
+
+
+func order_matches(o: Dictionary, f: Dictionary) -> bool:
+	var g: Dictionary = f.genes
+	if g.sp != o.sp or f.grow < 1.0 or f.health < 50.0 or f.get("dis", "") != "":
+		return false
+	match o.kind:
+		"color":
+			var c := Color.from_hsv(g.a[0], g.a[1], g.a[2])
+			return c.s > 0.3 and color_family(c.h) == int(o.color)
+		"pattern": return int(g.pat) == int(o.pat)
+		"mut":
+			if o.mut == "giant": return g.size >= 1.22
+			return bool(g[o.mut])
+		"rarity": return Genetics.rarity(g) >= 2
+	return true
+
+
+func deliver_order(oid: int, fid: int) -> bool:
+	var f := get_fish(fid)
+	for o in orders:
+		if int(o.id) == oid and order_matches(o, f):
+			orders.erase(o)
+			fish.erase(f)
+			fish_removed.emit(fid)
+			coins += int(o.coins)
+			pearls += int(o.get("pearls", 0))
+			add_xp(int(o.xp))
+			_bump("orders", 1)
+			toast.emit("%s está encantado con %s (+%d)" % [o.who, f.name, o.coins], "coin")
+			changed.emit()
+			return true
+	return false
+
+
+# ───────────────────────── Colección, racha y eventos ─────────────────────────
+
+func variants_of(sp: String) -> int:
+	var n := 0
+	for k in discovered:
+		n += int(String(k).begins_with(sp + "|"))
+	return n
+
+
+## Premio del álbum: 5 variantes de una especie = 3 perlas (una vez por especie).
+func claim_album(sp: String) -> void:
+	var done: Dictionary = stats.get("album", {})
+	if done.has(sp) or variants_of(sp) < 5:
+		return
+	done[sp] = true
+	stats.album = done
+	pearls += 3
+	toast.emit("¡Álbum de %s completo! +3 perlas" % Catalog.SPECIES[sp].name, "pearl")
+	changed.emit()
+
+
+func streak_day() -> int:
+	return (int(streak.get("n", 1)) - 1) % Catalog.STREAK.size()
+
+
+func claim_streak() -> void:
+	if not streak.get("pending", false):
+		return
+	streak.pending = false
+	var r: Dictionary = Catalog.STREAK[streak_day()]
+	var k: String = r.kind
+	if k == "coins":
+		coins += int(r.n)
+	elif k == "pearls":
+		pearls += int(r.n)
+	elif k.begins_with("food:"):
+		food[k.substr(5)] = int(food.get(k.substr(5), 0)) + int(r.n)
+	elif k == "egg":
+		if space_left() > 0:
+			var pool: Array = Catalog.SPECIES_ORDER.filter(func(sp): return Catalog.fits(Catalog.SPECIES[sp], water_kind) and Catalog.SPECIES[sp].level <= level + 2)
+			var g := Genetics.random_genes(pool[rng.randi() % pool.size()], rng, 1)
+			var now := Time.get_unix_time_from_system()
+			eggs.append({"id": next_id, "genes": g, "hatch_at": now + 1800.0, "total": 1800.0, "x": rng.randf_range(0.25, 0.75), "parents": "Huevo misterioso"})
+			next_id += 1
+			eggs_changed.emit()
+		else:
+			pearls += 8
+	toast.emit("Racha de %d días: %s" % [int(streak.get("n", 1)), r.text], "star")
+	_dirty = true
+	changed.emit()
+
+
+## Evento de temporada activo ({} si no hay). `-- event=halloween` lo fuerza para probar.
+func current_event() -> Dictionary:
+	var forced := _arg("event")
+	var d := Time.get_date_dict_from_system()
+	var md: int = d.month * 100 + d.day
+	for e in Catalog.EVENTS:
+		if forced != "":
+			if e.id == forced:
+				return e
+			continue
+		var a: int = e.from[0] * 100 + e.from[1]
+		var b: int = e.to[0] * 100 + e.to[1]
+		if (a <= b and md >= a and md <= b) or (a > b and (md >= a or md <= b)):
+			return e
+	return {}
+
+
+func event_days_left(e: Dictionary) -> int:
+	var d := Time.get_date_dict_from_system()
+	var end := {"year": d.year + (1 if e.to[0] < d.month else 0), "month": e.to[0], "day": e.to[1], "hour": 23, "minute": 59, "second": 0}
+	return maxi(0, ceili((Time.get_unix_time_from_datetime_dict(end) - Time.get_unix_time_from_system()) / 86400.0))
+
+
+func buy_event_fish() -> void:
+	var e := current_event()
+	if e.is_empty():
+		return
+	var info: Array = e.fish[water_kind]
+	var s: Dictionary = Catalog.SPECIES[info[0]]
+	if space_left() <= 0:
+		toast.emit("Pecera llena: amplíala o vende algún pez", "tank")
+		return
+	if not spend(int(s.price * Catalog.EVENT_FISH_PRICE), "coins"):
+		return
+	var g := Genetics.random_genes(info[0], rng)
+	for k in 3:
+		g[["a", "b", "f"][k]] = Genetics._hsv(info[2][k])
+	g.ev = e.id
+	var f := _add_fish(g, 0.6, false)
+	_bought("¡%s se une a tu pecera!" % info[1], "fish")
+	f.name = info[1].get_slice(" ", 1)
+
+
+# ───────────────────────── Varias peceras ─────────────────────────
+
+func can_buy_tank_slot() -> String:
+	if tanks.size() >= Catalog.TANK_SLOTS.size():
+		return "Máximo de peceras"
+	var slot: Dictionary = Catalog.TANK_SLOTS[tanks.size()]
+	if level < slot.level:
+		return "Nivel %d" % slot.level
+	return ""
+
+
+func buy_tank_slot(water_type: String) -> bool:
+	if can_buy_tank_slot() != "":
+		return false
+	if not spend(int(Catalog.TANK_SLOTS[tanks.size()].price), "coins"):
+		return false
+	tanks[active] = _snapshot()
+	_init_tank(water_type, "Pecera %d" % (tanks.size() + 1), false)
+	tanks.append(_snapshot())
+	active = tanks.size() - 1
+	_refresh_water()
+	_bought("¡Nueva pecera de %s!" % Catalog.WATER_NAMES[water_type].to_lower(), "tank")
+	save_game()
+	return true
+
+
+## Cambia la pecera activa (la vista se recarga). Lo que pasó en la otra mientras no la mirabas se simula al volver.
+func switch_tank(i: int) -> void:
+	if i == active or i < 0 or i >= tanks.size():
+		return
+	tanks[active] = _snapshot()
+	active = i
+	_apply(tanks[i])
+	_refresh_water()
+	var gap := Time.get_unix_time_from_system() - last_sim
+	if gap > 5.0:
+		_catch_up(gap)
+	last_sim = Time.get_unix_time_from_system()
+	save_game()
+
+
+func tank_space(i: int) -> int:
+	var t: Dictionary = _snapshot() if i == active else tanks[i]
+	return int(Catalog.TANKS[t.tank_tier].cap) - t.fish.size() - t.eggs.size()
+
+
+## Muda un pez a otra pecera (mismo tipo de agua y con sitio).
+func move_fish(id: int, to: int) -> String:
+	var f := get_fish(id)
+	if f.is_empty() or to == active or to < 0 or to >= tanks.size():
+		return "No se puede"
+	if tanks[to].water_kind != Catalog.SPECIES[f.genes.sp].water:
+		return "Esa pecera es de %s" % Catalog.WATER_NAMES[tanks[to].water_kind].to_lower()
+	if tank_space(to) <= 0:
+		return "Esa pecera está llena"
+	fish.erase(f)
+	fish_removed.emit(id)
+	tanks[to].fish.append(f)
+	toast.emit("%s se ha mudado a %s" % [f.name, tanks[to].tank_name], "tank")
+	changed.emit()
+	_dirty = true
+	return ""
+
+
+# ───────────────────────── Notificaciones (Android) ─────────────────────────
+
+func _notifier() -> Object:
+	return Engine.get_singleton("AquaNotify") if Engine.has_singleton("AquaNotify") else null
+
+
+## Pide permiso de notificaciones una sola vez (Android 13+), al acabar el tutorial o al arrancar.
+func ask_notifications() -> void:
+	var n := _notifier()
+	if n and settings.notify and not stats.get("notif_asked", false):
+		stats.notif_asked = true
+		n.requestPermission()
+
+
+func _schedule_notifications() -> void:
+	var n := _notifier()
+	if n == null:
+		return
+	n.cancelAll()
+	if not settings.notify or not started:
+		return
+	for it in upcoming_notifications():
+		n.schedule(it[0], it[1], it[2], it[3])
+
+
+## Avisos que tocan mientras la app está cerrada: [id, título, texto, segundos hasta el aviso].
+func upcoming_notifications() -> Array:
+	var out: Array = []
+	var now := Time.get_unix_time_from_system()
+	var rate := HUNGER_PER_MIN * float(mk("hunger"))
+	if not fish.is_empty() and rate > 0.0:
+		var worst := 0.0
+		for f in fish:
+			worst = maxf(worst, float(f.hunger))
+		var mins := (75.0 - worst) / rate
+		if mins > 20.0:
+			out.append([1, "Tus peces tienen hambre", "%s y compañía te esperan junto al cristal." % fish[0].name, int(mins * 60.0)])
+	var first := INF
+	for e in eggs:
+		first = minf(first, float(e.hatch_at))
+	if first < INF and first - now > 60.0:
+		out.append([2, "¡Un huevo está a punto de eclosionar!", "Ven a conocer a la cría.", int(first - now)])
+	var soonest := INF
+	var what := ""
+	for slot in equipment:
+		var id: String = equipment[slot]
+		if id == "":
+			continue
+		var w: float = Catalog.EQUIPMENT[id].wear * float(mk("wear"))
+		if w <= 0.0 or condition(slot) <= 30.0:
+			continue
+		var hrs := (condition(slot) - 30.0) / w
+		if hrs < soonest:
+			soonest = hrs
+			what = Catalog.EQUIPMENT[id].name
+	if soonest < INF and soonest > 0.5:
+		out.append([3, "%s necesita mantenimiento" % what, "Un aparato limpio es un acuario feliz.", int(soonest * 3600.0)])
+	var d := Time.get_date_dict_from_system()
+	var t19 := Time.get_unix_time_from_datetime_dict({"year": d.year, "month": d.month, "day": d.day, "hour": 19, "minute": 0, "second": 0}) + 86400
+	out.append([4, "Tu racha de %d días te espera" % int(streak.get("n", 1)), "Entra hoy para no perderla y recoger tu premio.", int(t19 - now)])
+	return out

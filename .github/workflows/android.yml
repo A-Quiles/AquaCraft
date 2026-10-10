@@ -62,15 +62,47 @@ jobs:
             sed -i "s/^version\/name=.*/version\/name=\"${GITHUB_REF_NAME#v}\"/" export_presets.cfg
           fi
 
+      # Notificaciones locales: plugin Android propio (plugins_src/aqua_notify). Se compila contra las clases
+      # de la plantilla de Godot y con su mismo Gradle/AGP. Si algo falla, el APK sale igual (sin avisos).
+      - name: Plugin de notificaciones (AAR)
+        continue-on-error: true
+        run: |
+          set -e
+          TPL=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_source.zip
+          rm -rf /tmp/tpl && mkdir -p /tmp/tpl && unzip -q "$TPL" -d /tmp/tpl
+          AGP=$(grep -rhoP "androidGradlePlugin\s*[:=]\s*['\"]\K[0-9.]+" /tmp/tpl | head -1 || true)
+          AGP=${AGP:-8.6.1}
+          LIB=$(find /tmp/tpl -name "godot-lib.template_release.aar" | head -1)
+          WRAP=$(dirname "$(find /tmp/tpl -name gradlew | head -1)")
+          P=plugins_src/aqua_notify
+          mkdir -p $P/libs
+          unzip -p "$LIB" classes.jar > $P/libs/godot-classes.jar
+          cp -r "$WRAP/gradlew" "$WRAP/gradle" $P/
+          sed -i "s/AGP_VERSION/$AGP/" $P/settings.gradle
+          (cd $P && chmod +x gradlew && ./gradlew --no-daemon -q assembleRelease)
+          cp $P/build/outputs/aar/*-release.aar addons/aqua_notify/bin/aqua_notify-release.aar
+          echo "::notice::Plugin de notificaciones compilado (AGP $AGP)"
+
       - name: APK de prueba
         run: |
           keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey \
             -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           mkdir -p build
-          GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$PWD/debug.keystore \
-          GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey \
-          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android \
-          ./godot --headless --export-debug "Android APK" build/AquaCraft-debug.apk 2>&1 | tee export.log
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$PWD/debug.keystore
+          export GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android
+          if [ -f addons/aqua_notify/bin/aqua_notify-release.aar ]; then
+            ./godot --headless --install-android-build-template --export-debug "Android APK Gradle" build/AquaCraft-debug.apk 2>&1 | tee export.log || true
+            if [ -f build/AquaCraft-debug.apk ]; then
+              echo "::notice::APK con notificaciones (Gradle)"
+            else
+              echo "::warning::La exportación Gradle falló: se genera el APK sin notificaciones"
+              grep -iE "error|failed|what went wrong" export.log | tail -8 | sed 's/^/::warning::/'
+            fi
+          fi
+          if [ ! -f build/AquaCraft-debug.apk ]; then
+            ./godot --headless --export-debug "Android APK" build/AquaCraft-debug.apk 2>&1 | tee export.log
+          fi
           if [ ! -f build/AquaCraft-debug.apk ]; then
             grep -iE "error|invalid|missing|not found" export.log | tail -15 | sed 's/^/::error::/'
             exit 1

@@ -7,11 +7,14 @@ import sys
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 SRC = sys.argv[1] if len(sys.argv) > 1 else "."
-CAPS = [("Tu acuario cozy", "siempre vivo, de día y de noche"),
+CAPS = [("Tu acuario cozy", "29 especies de agua dulce y salada"),
         ("Cría peces únicos", "genética, mutaciones y 5 rarezas"),
-        ("Limpia con el dedo", "agua clara, peces felices"),
-        ("Un mercado enorme", "peces exóticos cada día"),
-        ("Hasta 1000 litros", "decora el acuario de tus sueños")]
+        ("Pedidos de clientes", "cría lo que buscan y cobra más"),
+        ("Completa tu álbum", "variantes, eventos y premios"),
+        ("Cuida cada detalle", "agua, comida, sifón y medicinas"),
+        ("Empieza con una bola", "y llega al acuario de 1000 litros"),
+        ("Decora y moldea", "plantas que crecen, arena a tu gusto"),
+        ("Eventos de temporada", "peces y adornos de edición limitada")]
 W, H = 1080, 1920
 title = ImageFont.truetype("assets/fonts/Fredoka.ttf", 92)
 title.set_variation_by_axes([600, 100])

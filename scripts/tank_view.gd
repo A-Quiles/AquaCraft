@@ -295,6 +295,7 @@ func fish_at(p: Vector2) -> FishActor:
 
 func startle(p: Vector2) -> void:
 	overlay.ripple(p)
+	Sfx.play("bubble", 100, -6.0)
 	for a in actors.values():
 		if a.position.distance_to(p) < 140.0:
 			a.startle(p)
@@ -307,6 +308,8 @@ func vacuum_stroke(p: Vector2) -> void:
 	overlay.sponge_t = 0.6
 	if p.y > surface_y(p.x) - 80.0:
 		var got := Game.vacuum_at(p.x / size.x)
+		if got > 0.005:
+			Sfx.play("slurp", 420, -4.0)
 		if got > 0.01 and randf() < 0.6:
 			overlay.burst(Vector2(p.x, surface_y(p.x) - 6.0), "dirt", 2)
 
@@ -316,6 +319,8 @@ func clean_stroke(p: Vector2) -> void:
 	overlay.sponge_pos = p
 	overlay.sponge_t = 0.6
 	var got := Game.clean_at(Vector2(p.x / size.x, p.y / size.y))
+	if got > 0.02:
+		Sfx.play("squeak", 230, -6.0)
 	if got > 0.05 and randf() < 0.5:
 		overlay.burst(p + Vector2(randf_range(-20, 20), randf_range(-15, 15)), "sparkle", 1)
 
@@ -338,6 +343,8 @@ func _build_decor() -> void:
 		item.index = i
 		item.layer = int(it.layer)
 		item.u = u * (1.1 if d.kind == "plant" else 1.0) * (1.08 if item.layer == 2 else 1.0)
+		if Game.plant_grows(it.id):
+			item.u *= clampf(float(it.get("g", 1.0)), 0.7, 1.9)   # las plantas crecen hasta que se podan
 		item.sd = i * 977 + Game.tank_tier
 		item.scale.x = -1.0 if it.flip else 1.0
 		if d.kind == "plant":

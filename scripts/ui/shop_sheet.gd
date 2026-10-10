@@ -59,7 +59,7 @@ func _grid() -> GridContainer:
 
 
 ## Tarjeta estándar: miniatura, nombre, descripción y acción.
-func _card(grid: GridContainer, preview: Control, name: String, desc: String, action: Control, badge: Control = null) -> void:
+func _card(grid: GridContainer, preview: Control, name: String, desc: String, action: Control, badge: Control = null, warn := "") -> void:
 	var c := UI.card()
 	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var v := UI.vbox(8)
@@ -78,6 +78,8 @@ func _card(grid: GridContainer, preview: Control, name: String, desc: String, ac
 	var d := UI.wrap(UI.label(desc, 20, UI.MUTED))
 	d.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(d)
+	if warn != "":
+		v.add_child(UI.wrap(UI.label(warn, 19, UI.BAD, UI.bold)))
 	v.add_child(action)
 	c.add_child(v)
 	grid.add_child(c)
@@ -107,6 +109,22 @@ func _state(text: String) -> Button:
 # ───────────────────────── Pestañas ─────────────────────────
 
 func _fish_tab() -> void:
+	var ev := Game.current_event()
+	if not ev.is_empty():
+		_section("Evento: %s" % ev.name, "quedan %d días" % Game.event_days_left(ev))
+		var ge := _grid()
+		var info: Array = ev.fish[Game.water_kind]
+		var r := RandomNumberGenerator.new()
+		r.seed = 5
+		var g := Genetics.random_genes(info[0], r)
+		for k in 3:
+			g[["a", "b", "f"][k]] = Genetics._hsv(info[2][k])
+		g.ev = ev.id
+		_card(ge, Previews.fish(g), info[1], "Edición limitada: solo durante %s. Cuenta como una variante nueva." % ev.name,
+			_price(int(Catalog.SPECIES[info[0]].price * Catalog.EVENT_FISH_PRICE), "coins", 1, Game.buy_event_fish), UI.pill("Evento", UI.CORAL))
+		var did: String = ev.decor
+		var dd: Dictionary = Catalog.DECOR[did]
+		_card(ge, Previews.decor(did), dd.name, dd.desc, _price(dd.price, dd.cur, 1, Game.buy_decor.bind(did)), UI.pill("Evento", UI.CORAL))
 	_section("Exóticos de hoy", "con mutación")
 	var g := _grid()
 	var offers := Game.daily_offers()
@@ -125,7 +143,8 @@ func _fish_tab() -> void:
 		var r := RandomNumberGenerator.new()
 		r.seed = hash(sp)
 		var desc := "%s\n%s.\n%d–%d °C · pH %.1f–%.1f" % [s.desc, Game.diet_text(sp), s.temp[0], s.temp[1], s.ph[0], s.ph[1]]
-		_card(g, Previews.fish(Genetics.random_genes(sp, r)), s.name, desc, _price(s.price, "coins", s.level, Game.buy_fish.bind(sp)))
+		_card(g, Previews.fish(Genetics.random_genes(sp, r)), s.name, desc, _price(s.price, "coins", s.level, Game.buy_fish.bind(sp)), null,
+			Game.compat_warning(sp) if Game.level >= s.level else "")
 
 
 func _tank_tab() -> void:
@@ -142,6 +161,14 @@ func _tank_tab() -> void:
 		else:
 			act = _price(t.price, "coins", t.level, Game.buy_tank.bind(i))
 		_card(g, Previews.art("tank", i), t.name, desc, act)
+	_section("Más peceras", "tienes %d de %d" % [Game.tanks.size(), Catalog.TANK_SLOTS.size()])
+	var gs := _grid()
+	var more := UI.button("Ver peceras")
+	more.custom_minimum_size.y = 62
+	more.pressed.connect(func():
+		close()
+		get_parent().open_tank_picker())
+	_card(gs, Previews.art("tank", 1), "Otra pecera", "Cría aparte, separa peces que no se llevan o ten agua dulce y salada a la vez.", more)
 	var other := "salada" if Game.water_kind == "dulce" else "dulce"
 	_section("Tipo de agua", Catalog.WATER_NAMES[Game.water_kind])
 	var g2 := _grid()
@@ -226,7 +253,7 @@ func _decor_tab() -> void:
 	var g3 := _grid()
 	for id in Catalog.DECOR_ORDER:
 		var d: Dictionary = Catalog.DECOR[id]
-		if not Catalog.fits(d, Game.water_kind):
+		if not Catalog.fits(d, Game.water_kind) or d.has("event"):
 			continue
 		_card(g3, Previews.decor(id), d.name, d.desc, _price(d.price, d.cur, d.level, Game.buy_decor.bind(id)))
 

@@ -77,6 +77,27 @@ func _draw() -> void:
 			_siphon(sponge_pos, minf(1.0, sponge_t * 3.0))
 		else:
 			_sponge(sponge_pos, minf(1.0, sponge_t * 3.0))
+	# Enfermedades visibles: puntitos blancos (ich), copos algodonosos (hongos) o aletas rojizas.
+	for a in tank.actors.values():
+		var dis: String = a.data.get("dis", "")
+		if dis == "":
+			continue
+		var s: Vector2 = a.size_px()
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(a.data.id)
+		match dis:
+			"ich":
+				for k in 9:
+					draw_circle(a.position + Vector2(rng.randf_range(-0.3, 0.3) * s.x, rng.randf_range(-0.2, 0.2) * s.y), 1.6, Color(1, 1, 1, 0.95))
+			"hongos":
+				for k in 3:
+					var p: Vector2 = a.position + Vector2(rng.randf_range(-0.25, 0.25) * s.x, rng.randf_range(-0.15, 0.15) * s.y)
+					draw_circle(p, 4.5, Color(1, 1, 1, 0.55))
+					draw_circle(p + Vector2(2, -1), 3.0, Color(1, 1, 1, 0.75))
+			"aletas":
+				var tail: Vector2 = a.position - Vector2(a.facing * s.x * 0.42, 0)
+				for k in 4:
+					draw_line(tail + Vector2(0, -6 + k * 4), tail + Vector2(-a.facing * 7, -7 + k * 5), Color(0.85, 0.2, 0.2, 0.7), 2.0, true)
 	if Game.show_names:
 		var font := UI.bold
 		for a in tank.actors.values():

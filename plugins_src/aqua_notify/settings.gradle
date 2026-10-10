@@ -1,0 +1,19 @@
+// Plugin de notificaciones locales de AquaCraft. El CI sustituye AGP_VERSION por la versión del
+// Android Gradle Plugin que usa la plantilla de Godot y copia su gradlew.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+        id 'com.android.library' version 'AGP_VERSION'
+    }
+}
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'aqua_notify'

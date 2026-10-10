@@ -111,6 +111,7 @@ static func button(text: String, bg := TEAL, dark := TEAL_D) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(click)
 	if bg != TEAL:
 		button_colors(b, bg, dark)
 	return b
@@ -131,6 +132,13 @@ static func price_button(amount: int, cur: String, prefix := "") -> Button:
 	h.add_child(label(_num(amount), 26, Color.WHITE, bold))
 	b.add_child(h)
 	return b
+
+
+## Sonido de botón (UI es estático: busca el autoload por la ruta).
+static func click() -> void:
+	var s := (Engine.get_main_loop() as SceneTree).root.get_node_or_null("Sfx")
+	if s:
+		s.play("click", 40, -8.0)
 
 
 static func card(bg := Color.WHITE, radius := 24) -> PanelContainer:

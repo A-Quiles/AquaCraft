@@ -68,6 +68,8 @@ func _ready() -> void:
 	Game.changed.connect(_frame.queue_redraw)
 	Game.changed.connect(_props.queue_redraw)
 	_layout()
+	if Game._arg("promo") != "":
+		_promo.call_deferred()
 	if Game._arg("shot") != "":
 		_screenshot.call_deferred()
 
@@ -79,7 +81,15 @@ func _screenshot() -> void:
 	match open.get_slice(":", 0):
 		"shop": hud.open_shop(int(open.get_slice(":", 1)))
 		"fish": hud.open_fish(Game.fish[int(open.get_slice(":", 1))].id if open.contains(":") else -1)
-		"missions": hud.open_missions()
+		"missions":
+			Game._refresh_orders(Time.get_unix_time_from_system())
+			Game._refresh_orders(Time.get_unix_time_from_system())
+			hud.open_missions(int(open.get_slice(":", 1)) if open.contains(":") else 0)
+		"settings": hud.open_settings()
+		"tanks": hud.open_tank_picker()
+		"streak":
+			Game.streak = {"n": 4, "pending": true, "last": ""}
+			hud.open_streak()
 		"thermo": hud.open_thermostat()
 		"feed":
 			set_mode(Mode.FEED)
@@ -139,6 +149,45 @@ func _screenshot() -> void:
 			for i in (30 if open == "clean" else 0):
 				tank.clean_stroke(Vector2(tank.size.x * (0.2 + i * 0.02), tank.size.y * (0.3 + sin(i * 0.4) * 0.1)))
 	await _save_shot()
+
+
+## Vídeo promocional (~22 s): `godot --write-movie promo.avi --fixed-fps 30 -- demo=3 promo=1`
+func _promo() -> void:
+	var wait := func(s: float): await get_tree().create_timer(s).timeout
+	await wait.call(1.5)
+	set_mode(Mode.FEED)
+	for i in 8:
+		tank.food.drop(tank.size.x * (0.2 + i * 0.08), "escamas")
+		await wait.call(0.25)
+	await wait.call(2.0)
+	set_mode(Mode.FEED)
+	Game.show_names = true
+	await wait.call(2.5)
+	Game.show_names = false
+	hud.open_fish(Game.fish[1].id)
+	await wait.call(2.5)
+	hud.back()
+	await wait.call(0.6)
+	hud.open_shop(0)
+	await wait.call(1.5)
+	(hud._sheet as ShopSheet)._scroll.scroll_vertical = 600
+	await wait.call(1.5)
+	hud.back()
+	await wait.call(0.6)
+	hud.open_missions(2)
+	await wait.call(2.5)
+	hud.back()
+	await wait.call(0.6)
+	for i in Game.algae.size():
+		Game.algae[i] = mini(255, int(Game.algae_weights()[i] * 120.0))
+	Game.algae_changed.emit()
+	set_mode(Mode.CLEAN)
+	for i in 40:
+		tank.clean_stroke(Vector2(tank.size.x * (0.15 + i * 0.018), tank.size.y * (0.35 + sin(i * 0.5) * 0.12)))
+		await wait.call(0.05)
+	set_mode(Mode.CLEAN)
+	await wait.call(2.0)
+	get_tree().quit()
 
 
 func _save_shot() -> void:

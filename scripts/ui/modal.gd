@@ -62,3 +62,23 @@ func centered(c: Control) -> Control:
 	c.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(c)
 	return c
+
+
+## Lista con scroll dentro de la ventana (para contenidos largos). Devuelve donde añadir filas.
+func scroll_box(max_h: float) -> VBoxContainer:
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.custom_minimum_size = Vector2(0, max_h)
+	sc.scroll_deadzone = 12
+	box.add_child(sc)
+	var v := UI.vbox(10)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(v)
+	# Las filas dejan pasar el arrastre al scroll (como en las hojas).
+	var tree := Engine.get_main_loop() as SceneTree
+	var pass_drag := func(n: Node) -> void:
+		if n is Control and n.mouse_filter == Control.MOUSE_FILTER_STOP and sc.is_ancestor_of(n):
+			n.mouse_filter = Control.MOUSE_FILTER_PASS
+	tree.node_added.connect(pass_drag)
+	sc.tree_exiting.connect(func() -> void: tree.node_added.disconnect(pass_drag))
+	return v

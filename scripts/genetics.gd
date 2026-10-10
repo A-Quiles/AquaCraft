@@ -93,6 +93,7 @@ static func rarity(g: Dictionary) -> int:
 	if g.rare_col: sc += 1
 	if not (int(g.pat) in Catalog.SPECIES[g.sp].patterns): sc += 1
 	if g.size >= 1.22: sc += 1
+	if g.get("ev", "") != "": sc += 1
 	return mini(sc, 4)
 
 
@@ -104,17 +105,19 @@ static func mutation_names(g: Dictionary) -> PackedStringArray:
 	if g.rare_col: out.append("Color raro")
 	if not (int(g.pat) in Catalog.SPECIES[g.sp].patterns): out.append("Patrón raro")
 	if g.size >= 1.22: out.append("Gigante")
+	if g.get("ev", "") != "": out.append("Edición %s" % g.ev)
 	return out
 
 
 ## Clave de colección: especie + patrón + mutaciones + familia de color.
 static func variant_key(g: Dictionary) -> String:
-	return "%s|%d|%d%d%d%d|%d" % [g.sp, int(g.pat), int(g.neon), int(g.albino), int(g.veil), int(g.rare_col), int(g.a[0] * 6.0) % 6]
+	return "%s|%d|%d%d%d%d|%d%s" % [g.sp, int(g.pat), int(g.neon), int(g.albino), int(g.veil), int(g.rare_col), int(g.a[0] * 6.0) % 6,
+		"|" + g.ev if g.get("ev", "") != "" else ""]
 
 
 static func value(f: Dictionary) -> int:
 	var g: Dictionary = f.genes
-	var stage := 0.25 if f.grow < 0.35 else (0.55 if f.grow < 1.0 else 1.0)
+	var stage := 0.25 if f.grow < 0.35 else (0.55 if f.grow < 1.0 else (0.5 if f.get("old", false) else 1.0))
 	var v: float = Catalog.SPECIES[g.sp].price * 0.7 * Catalog.RARITY_MULT[rarity(g)] \
 		* (0.6 + 0.4 * g.size) * stage * (0.4 + 0.6 * f.health / 100.0)
 	return maxi(1, roundi(v))

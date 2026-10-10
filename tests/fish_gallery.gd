@@ -10,10 +10,11 @@ func _init() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		out = args[0]
-	root.size = Vector2i(960, 1440)
+	var rows := ceili(Catalog.SPECIES_ORDER.size() / 4.0)
+	root.size = Vector2i(1040, rows * 200 + 40)
 	var bg := ColorRect.new()
 	bg.color = Color("0b4a63")
-	bg.size = Vector2(960, 1440)
+	bg.size = Vector2(root.size)
 	root.add_child(bg)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
@@ -21,8 +22,8 @@ func _init() -> void:
 	for sp in Catalog.SPECIES_ORDER:
 		for v in 1:
 			var g := Genetics.random_genes(sp, rng, 0)
-			var node := FishPreview.make(g, 1.6)
-			var c := Vector2(160 + (i % 3) * 320, 90 + (i / 3) * 270)
+			var node := FishPreview.make(g, 1.05)
+			var c := Vector2(108 + (i % 4) * 216, 70 + (i / 4) * 150)
 			node.position = c - node.custom_minimum_size * 0.5 + Vector2(0, 40)
 			root.add_child(node)
 			i += 1

@@ -246,6 +246,13 @@ void fragment() {
 		float c2 = 0.3 + 0.85 * smoothstep(0.1, -0.65, dx);
 		float arc = smoothstep(0.16, 0.09, abs(dy - c2)) * step(-0.7, dx) * step(dx, 0.12);
 		pm = max(band, arc);
+	} else if (pattern == 9) {
+		// Rayas longitudinales (pez cebra, ángel emperador).
+		pm = smoothstep(0.35, 0.65, sin(dy * 15.0 + dx * 1.2)) * smoothstep(-0.95, -0.75, dx) * smoothstep(0.95, 0.7, dx);
+	} else if (pattern == 10) {
+		// Triángulo negro en la mitad trasera (rasbora arlequín).
+		float w = (dx + 0.8) * 0.32;
+		pm = smoothstep(0.03, -0.03, abs(dy + 0.05) - w) * step(dx, 0.2) * smoothstep(-0.85, -0.6, dx);
 	}
 	vec3 bc = albinize(mix(base, col_pat, pm));
 

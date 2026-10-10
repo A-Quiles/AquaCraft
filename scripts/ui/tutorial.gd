@@ -89,6 +89,7 @@ func _finish() -> void:
 		main.set_mode(main.mode)
 	Game.started = true
 	Game.save_game()
+	Game.ask_notifications()
 	queue_free()
 
 

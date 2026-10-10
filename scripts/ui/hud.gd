@@ -46,6 +46,10 @@ func _ready() -> void:
 	refresh_mode()
 	if not Game.started:
 		(start_tutorial if Game.stats.get("setup", false) else open_setup).call_deferred()
+	elif Game.streak.get("pending", false):
+		open_streak.call_deferred()
+	if Game.started:
+		Game.ask_notifications.call_deferred()
 
 
 func _glass(radius := 26) -> StyleBoxFlat:
@@ -75,13 +79,32 @@ func _build_top() -> void:
 	_badge.custom_minimum_size = Vector2(84, 84)
 	_badge.gui_input.connect(_tap.bind(open_missions))
 	row.add_child(_badge)
-	var name_box := UI.vbox(0)
-	name_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	name_box.add_child(UI.label("AquaCraft", 30, Color.WHITE, UI.heading))
-	row.add_child(name_box)
+	# Nombre de la pecera: tocarlo abre el selector de peceras.
+	var name_btn := Button.new()
+	name_btn.focus_mode = Control.FOCUS_NONE
+	name_btn.text = Game.tank_name + ("  %d/%d" % [Game.active + 1, Game.tanks.size()] if Game.tanks.size() > 1 else "")
+	name_btn.add_theme_font_override("font", UI.heading)
+	name_btn.add_theme_font_size_override("font_size", 28)
+	for st in ["normal", "hover", "pressed"]:
+		name_btn.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+		name_btn.add_theme_color_override(k, Color.WHITE)
+	name_btn.pressed.connect(open_tank_picker)
+	row.add_child(name_btn)
 	row.add_child(UI.spacer())
 	_coins = _currency(row, "coin", func(): open_shop(0))
 	_pearls = _currency(row, "pearl", func(): open_missions())
+	var gear := Button.new()
+	gear.focus_mode = Control.FOCUS_NONE
+	gear.custom_minimum_size = Vector2(56, 56)
+	gear.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	for st in ["normal", "hover", "pressed"]:
+		gear.add_theme_stylebox_override(st, _glass(28))
+	var gi := VIcon.make("gear", 32)
+	gi.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	gear.add_child(gi)
+	gear.pressed.connect(open_settings)
+	row.add_child(gear)
 	v.add_child(row)
 
 	var chips := UI.hbox(8)
@@ -329,6 +352,13 @@ func _chip_tip(k: String) -> void:
 # ───────────────────────── Avisos ─────────────────────────
 
 func show_toast(text: String, icon := "star") -> void:
+	if Game._arg("shot") != "" or Game._arg("promo") != "":
+		return                                    # capturas y vídeo para la tienda: sin avisos
+	var snd: String = {"coin": "coin", "egg": "hatch", "star": "chime", "dna": "chime", "health": "error", "pearl": "chime", "sparkle": "chime"}.get(icon, "")
+	if snd != "":
+		Sfx.play(snd, 200, -3.0)
+	if icon == "coin":
+		Sfx.vibrate(20)
 	if _toasts.get_child_count() >= 3:
 		_toasts.get_child(0).queue_free()
 	var p := UI.card(Color(1, 0.99, 0.96, 0.97), 26)
@@ -376,8 +406,8 @@ func open_fish(id: int) -> void:
 	main.tank.overlay.selected_id = id
 
 
-func open_missions() -> void:
-	_open(MissionsSheet.new())
+func open_missions(tab := 0) -> void:
+	_open(MissionsSheet.new(tab))
 
 
 func _show_modal(m: Modal) -> void:
@@ -540,6 +570,7 @@ func open_water_panel() -> void:
 			seen[sp.name] = true
 			info += "\n%s: pH %.1f–%.1f" % [sp.name, sp.ph[0], sp.ph[1]]
 	m.box.add_child(_center_label(info, 20, UI.NAVY))
+	var list := m.scroll_box(minf(620.0, get_viewport_rect().size.y * 0.5))
 	for id in Catalog.PRODUCT_ORDER:
 		var pr: Dictionary = Catalog.PRODUCTS[id]
 		if not Catalog.fits(pr, Game.water_kind):
@@ -555,13 +586,13 @@ func open_water_panel() -> void:
 			Game.buy_product(id)
 			m.close()
 			open_water_panel())
-		m.box.add_child(_pick_row(Previews.art("product", id, 70), "%s  ×%d" % [pr.name, n], pr.desc, [use, buy]))
+		list.add_child(_pick_row(Previews.art("product", id, 70), "%s  ×%d" % [pr.name, n], pr.desc, [use, buy]))
 	if Game.water_kind == "salada":
 		var top := UI.button("Reponer")
 		top.pressed.connect(func():
 			Game.top_up()
 			m.close())
-		m.box.add_child(_pick_row(Previews.icon("ph", 70, 50), "Agua dulce", "Baja la salinidad 2 milésimas. Úsala cuando se evapore el agua.", [top]))
+		list.add_child(_pick_row(Previews.icon("ph", 70, 50), "Agua dulce", "Baja la salinidad 2 milésimas. Úsala cuando se evapore el agua.", [top]))
 	_show_modal(m)
 
 
@@ -711,6 +742,15 @@ func open_decor_menu(i: int) -> void:
 	row.add_child(layer)
 	m.box.add_child(row)
 	m.box.add_child(_center_label("Ahora: %s" % layers[int(it.layer)].to_lower(), 20, UI.MUTED))
+	if Game.plant_grows(it.id):
+		var g := float(it.get("g", 1.0))
+		m.box.add_child(_center_label("Tamaño: %d%%%s" % [roundi(g * 100.0), " · ¡pide poda!" if Game.needs_prune(i) else " · crece con la luz"], 21, UI.BAD if Game.needs_prune(i) else UI.NAVY))
+		if Game.needs_prune(i):
+			var cut := UI.button("Podar (+1 esqueje)", UI.TEAL, UI.TEAL_D)
+			cut.pressed.connect(func():
+				Game.prune_decor(i)
+				m.close())
+			m.box.add_child(cut)
 	var store := UI.button("Guardar en el inventario", UI.CORAL, UI.CORAL_D)
 	store.pressed.connect(func():
 		main.tank.selected_decor = -1
@@ -749,6 +789,8 @@ func _hold_button(text: String, on_done: Callable) -> Button:
 
 
 func _on_level_up(lv: int) -> void:
+	Sfx.play("levelup", 500)
+	Sfx.vibrate(60)
 	var m := Modal.new()
 	m.centered(VIcon.make("star", 90))
 	m.centered(UI.title("¡Nivel %d!" % lv, 52))
@@ -793,3 +835,127 @@ class LevelBadge extends Control:
 		var fs := 34
 		var w := UI.heading.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		draw_string(UI.heading, c + Vector2(-w * 0.5, fs * 0.36), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+
+
+# ───────────────────────── Peceras, ajustes y racha ─────────────────────────
+
+## Elegir pecera (o comprar otra). Cambiar recarga la escena con la pecera elegida.
+func open_tank_picker() -> void:
+	var m := Modal.new()
+	m.centered(UI.title("Tus peceras", 38))
+	for i in Game.tanks.size():
+		var t: Dictionary = Game._snapshot() if i == Game.active else Game.tanks[i]
+		var info := "%s · %s · %d peces" % [Catalog.TANKS[t.tank_tier].name, Catalog.WATER_NAMES[t.water_kind], t.fish.size()]
+		var b := UI.button("En uso" if i == Game.active else "Ir")
+		b.disabled = i == Game.active
+		b.pressed.connect(func():
+			m.close()
+			Game.switch_tank(i)
+			get_tree().reload_current_scene())
+		m.box.add_child(_pick_row(Previews.art("tank", int(t.tank_tier), 70), t.tank_name, info, [b]))
+	var why := Game.can_buy_tank_slot()
+	if why == "Máximo de peceras":
+		m.box.add_child(_center_label("Tienes el máximo de peceras (%d)." % Catalog.TANK_SLOTS.size(), 21))
+	else:
+		var price := int(Catalog.TANK_SLOTS[Game.tanks.size()].price)
+		m.box.add_child(_center_label("Otra pecera para criar aparte, separar peces que no se llevan o tener dulce y salada a la vez.", 20))
+		var row := UI.hbox(10)
+		for wid in ["dulce", "salada"]:
+			var b: Button
+			if why != "":
+				b = UI.button("%s · %s" % [Catalog.WATER_NAMES[wid], why])
+				b.disabled = true
+			else:
+				b = UI.price_button(price, "coins", wid.capitalize())
+				b.pressed.connect(func():
+					if Game.buy_tank_slot(wid):
+						m.close()
+						get_tree().reload_current_scene())
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(b)
+		m.box.add_child(row)
+	_show_modal(m)
+
+
+func open_settings() -> void:
+	var m := Modal.new()
+	m.centered(UI.title("Ajustes", 40))
+	for k in [["music", "Música"], ["sfx", "Efectos de sonido"], ["vibration", "Vibración"], ["notify", "Avisos (hambre, huevos...)"]]:
+		var row := UI.hbox(10)
+		var l := UI.label(k[1], 23, UI.NAVY, UI.bold)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		var b := UI.button("")
+		b.custom_minimum_size = Vector2(130, 56)
+		var paint := func():
+			var on: bool = Game.settings[k[0]]
+			b.text = "Sí" if on else "No"
+			UI.button_colors(b, UI.TEAL if on else Color("c9d2db"), UI.TEAL_D if on else Color("aab6c2"))
+		paint.call()
+		b.pressed.connect(func():
+			Game.settings[k[0]] = not Game.settings[k[0]]
+			Game.save_game()
+			Sfx.apply_settings()
+			paint.call())
+		row.add_child(b)
+		m.box.add_child(row)
+	var modes := UI.button("Modo de juego: %s" % Catalog.MODES[Game.mode].name, UI.LAV, UI.LAV_D)
+	modes.pressed.connect(func():
+		m.close()
+		open_mode_picker())
+	m.box.add_child(modes)
+	var tut := UI.button("Repetir el tutorial", UI.SAND, Color("e2d3bd"))
+	tut.add_theme_color_override("font_color", UI.NAVY)
+	tut.pressed.connect(func():
+		m.close()
+		start_tutorial())
+	m.box.add_child(tut)
+	var priv := UI.button("Política de privacidad", UI.SAND, Color("e2d3bd"))
+	priv.add_theme_color_override("font_color", UI.NAVY)
+	priv.pressed.connect(func(): OS.shell_open(PRIVACY_URL))
+	m.box.add_child(priv)
+	m.box.add_child(_hold_button("Mantén pulsado: borrar partida", func():
+		m.close()
+		Game.reset_game()
+		get_tree().reload_current_scene()))
+	m.box.add_child(_center_label("AquaCraft %s · sin anuncios ni compras" % ProjectSettings.get_setting("application/config/version"), 19))
+	_show_modal(m)
+
+
+const PRIVACY_URL := "https://a-quiles.github.io/AquaCraft/privacidad.html"
+
+
+## Premio de la racha diaria: 7 casillas, la de hoy resaltada.
+func open_streak() -> void:
+	if not Game.streak.get("pending", false):
+		return
+	var m := Modal.new(false)
+	m.centered(VIcon.make("star", 70))
+	var n := int(Game.streak.get("n", 1))
+	m.centered(UI.title("¡Racha de %d día%s!" % [n, "" if n == 1 else "s"], 38))
+	m.box.add_child(_center_label("Vuelve cada día: el premio mejora y el 7º es un huevo misterioso.", 21))
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	var today := Game.streak_day()
+	for i in Catalog.STREAK.size():
+		var c := UI.card(UI.SUN if i == today else (Color("dff3f5") if i < today else Color.WHITE), 18)
+		c.custom_minimum_size = Vector2(128, 0)
+		var v := UI.vbox(2)
+		var l := UI.label("Día %d" % (i + 1), 19, UI.NAVY, UI.heading)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(l)
+		var t := UI.wrap(UI.label(Catalog.STREAK[i].text, 16, UI.NAVY if i == today else UI.MUTED, UI.bold))
+		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(t)
+		c.add_child(v)
+		grid.add_child(c)
+	m.centered(grid)
+	var ok := UI.button("¡Recoger!", UI.CORAL, UI.CORAL_D)
+	ok.custom_minimum_size.y = 70
+	ok.pressed.connect(func():
+		Game.claim_streak()
+		m.close())
+	m.box.add_child(ok)
+	_show_modal(m)

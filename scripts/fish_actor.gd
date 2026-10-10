@@ -64,6 +64,7 @@ func _process(dt: float) -> void:
 			if position.distance_to(food.pos) < maxf(9.0, size_px().x * 0.32):
 				tank.food.eat(food)
 				Game.fish_ate(data.id, food.type)
+				Sfx.play("bubble", 140, -12.0)
 				tank.overlay.burst(position + Vector2(size_px().x * 0.4 * facing, 0), "bubble", 2)
 				if food.type == "artemia":
 					heart = 1.6
