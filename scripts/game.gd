@@ -1379,6 +1379,15 @@ func install_stored(id: String) -> void:
 	toast.emit("%s instalado" % Catalog.EQUIPMENT[id].name, "gear")
 
 
+## Burbuja de premio que soltó un pez contento (la vista la crea; aquí solo se cobra).
+func collect_reward(c: int, p: int) -> void:
+	coins += c
+	pearls += p
+	_bump("bubbles", 1)
+	add_xp(1)
+	changed.emit()
+
+
 func rename_fish(id: int, new_name: String) -> void:
 	var f := get_fish(id)
 	new_name = new_name.strip_edges().left(16)

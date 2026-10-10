@@ -10,6 +10,9 @@ var sponge_pos := Vector2(-999, -999)
 var sponge_t := 0.0
 var tool := "sponge"                 ## sponge (limpiacristales) / siphon (sifón)
 var selected_id := -1
+var rewards: Array = []              ## burbujas de premio: {pos, coins, pearl, age}
+var floats: Array = []               ## textos "+5" que suben al recoger: [pos, texto, edad]
+var _reward_acc := 0.0
 
 
 func ripple(p: Vector2) -> void:
@@ -41,6 +44,7 @@ func _process(dt: float) -> void:
 		if ripples[i][1] > 0.8:
 			ripples.remove_at(i)
 	sponge_t = maxf(0.0, sponge_t - dt)
+	_update_rewards(dt)
 	queue_redraw()
 
 
@@ -98,6 +102,24 @@ func _draw() -> void:
 				var tail: Vector2 = a.position - Vector2(a.facing * s.x * 0.42, 0)
 				for k in 4:
 					draw_line(tail + Vector2(0, -6 + k * 4), tail + Vector2(-a.facing * 7, -7 + k * 5), Color(0.85, 0.2, 0.2, 0.7), 2.0, true)
+	for r in rewards:
+		var a: float = clampf(r.age * 3.0, 0.0, 1.0) * clampf((REWARD_LIFE - r.age) / 1.5, 0.0, 1.0)
+		var p: Vector2 = r.pos
+		draw_circle(p, 17.0, Color(0.85, 1.0, 1.0, 0.25 * a))
+		draw_arc(p, 17.0, 0, TAU, 28, Color(1, 1, 1, 0.85 * a), 2.0, true)
+		if r.pearl:
+			draw_circle(p, 9.0, Color(0.85, 0.8, 1.0, a))
+			draw_circle(p + Vector2(-3, -3), 3.0, Color(1, 1, 1, a))
+		else:
+			draw_circle(p, 10.0, Color(0.88, 0.6, 0.1, a))
+			draw_circle(p + Vector2(0, -1), 8.5, Color(1.0, 0.79, 0.29, a))
+			draw_arc(p, 5.5, 0, TAU, 14, Color(0.91, 0.65, 0.16, a), 1.6, true)
+		draw_circle(p + Vector2(-7, -8), 3.5, Color(1, 1, 1, 0.8 * a))
+	for f in floats:
+		var k: float = f[2] / 1.2
+		var fp: Vector2 = f[0] + Vector2(0, -40.0 * k)
+		draw_string_outline(UI.bold, fp, f[1], HORIZONTAL_ALIGNMENT_CENTER, 80, 26, 6, Color(0.04, 0.12, 0.19, 0.8 * (1.0 - k)))
+		draw_string(UI.bold, fp, f[1], HORIZONTAL_ALIGNMENT_CENTER, 80, 26, Color(1, 0.86, 0.3, 1.0 - k))
 	if Game.show_names:
 		var font := UI.bold
 		for a in tank.actors.values():
@@ -152,3 +174,51 @@ func _siphon(p: Vector2, a: float) -> void:
 	draw_rect(bell, Color(0.9, 1.0, 1.0, 0.8 * a), false, 2.0)
 	draw_rect(Rect2(bell.position + Vector2(4, 0), Vector2(5, bell.size.y)), Color(1, 1, 1, 0.35 * a))
 	draw_rect(Rect2(bell.position + Vector2(-2, -6), Vector2(36, 8)), Color(0.25, 0.55, 0.85, a))
+
+
+# ───────────────────────── Burbujas de premio ─────────────────────────
+# Los peces contentos sueltan de vez en cuando una burbuja con una moneda (o, raras veces, una perla)
+# que sube hasta la superficie; tocarla la recoge. Si nadie la toca, se va.
+
+const REWARD_LIFE := 14.0
+const REWARD_MAX := 5
+
+
+func _update_rewards(dt: float) -> void:
+	_reward_acc += dt
+	if _reward_acc >= 1.0:
+		_reward_acc = 0.0
+		for a in tank.actors.values():
+			var f: Dictionary = a.data
+			if rewards.size() < REWARD_MAX and f.happy > 65.0 and f.hunger < 60.0 and f.health > 60.0 and randf() < 1.0 / 75.0:
+				var price: float = Catalog.SPECIES[f.genes.sp].price
+				rewards.append({"pos": a.position, "coins": maxi(1, roundi(price * 0.05 * (1 + Genetics.rarity(f.genes)))),
+					"pearl": randf() < 0.04, "age": 0.0})
+	for i in range(rewards.size() - 1, -1, -1):
+		var r: Dictionary = rewards[i]
+		r.age += dt
+		r.pos.y = maxf(26.0, r.pos.y - 22.0 * dt)
+		r.pos.x += sin(r.age * 2.5 + i) * 10.0 * dt
+		if r.age > REWARD_LIFE:
+			rewards.remove_at(i)
+	for i in range(floats.size() - 1, -1, -1):
+		floats[i][2] += dt
+		if floats[i][2] > 1.2:
+			floats.remove_at(i)
+
+
+func reward_at(p: Vector2) -> int:
+	for i in rewards.size():
+		if (rewards[i].pos as Vector2).distance_to(p) < 30.0:
+			return i
+	return -1
+
+
+func collect(i: int) -> void:
+	var r: Dictionary = rewards[i]
+	rewards.remove_at(i)
+	Game.collect_reward(0 if r.pearl else int(r.coins), 1 if r.pearl else 0)
+	floats.append([r.pos - Vector2(40, 0), "+1 perla" if r.pearl else "+%d" % r.coins, 0.0])
+	burst(r.pos, "sparkle", 6)
+	Sfx.play("coin", 60, -4.0)
+	Sfx.vibrate(15)

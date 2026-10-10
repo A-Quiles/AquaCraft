@@ -31,6 +31,12 @@ var sculpt := false                  ## Decorar → moldear la arena
 var _feed_cd := 0.0
 var _night := 0.0
 var _night_acc := 999.0
+const ZOOM_MAX := 2.6                ## acercar con dos dedos, como una foto
+var cam: Camera2D
+var _touches := {}                   ## dedo → posición en pantalla
+var _pinch := {}                     ## inicio del pellizco: dist, zoom, punto del mundo
+var _gesture := false                ## hubo pellizco o arrastre de cámara: soltar no cuenta como toque
+var _tap_from := Vector2.INF         ## dónde empezó el toque (pantalla), para actuar al soltar
 
 
 func _ready() -> void:
@@ -58,6 +64,9 @@ func _ready() -> void:
 	_frame.z_index = 60
 	_frame.draw.connect(_draw_frame)
 	add_child(_frame)
+	cam = Camera2D.new()
+	add_child(cam)
+	cam.make_current()
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	hud = Hud.new()
@@ -86,6 +95,11 @@ func _screenshot() -> void:
 			Game._refresh_orders(Time.get_unix_time_from_system())
 			hud.open_missions(int(open.get_slice(":", 1)) if open.contains(":") else 0)
 		"settings": hud.open_settings()
+		"zoom":
+			for i in 3:
+				tank.overlay.rewards.append({"pos": tank.size * Vector2(0.3 + i * 0.2, 0.5 - i * 0.1), "coins": 4, "pearl": i == 2, "age": 1.0})
+			if open.contains(":"):
+				_set_zoom(float(open.get_slice(":", 1)), tank.global_position + tank.size * 0.5)
 		"tanks": hud.open_tank_picker()
 		"streak":
 			Game.streak = {"n": 4, "pending": true, "last": ""}
@@ -107,7 +121,7 @@ func _screenshot() -> void:
 				_sculpt(Vector2(tank.size.x * 0.7, 0), 0.004)
 				_sculpt(Vector2(tank.size.x * 0.95, 0), -0.0015)
 		"equip": hud.open_equipment(open.get_slice(":", 1))
-		"food": hud.open_food_picker()
+		"food": use_prop("food")
 		"water": hud.open_water_panel()
 		"names":
 			Game.show_names = true
@@ -242,6 +256,7 @@ func _layout() -> void:
 	_frame.queue_redraw()
 	_bowl_mask.queue_redraw()
 	_props.queue_redraw()
+	_set_zoom(cam.zoom.x, cam.position if cam.zoom.x > 1.0 else vp * 0.5)
 
 
 func set_mode(m: Mode) -> void:
@@ -288,23 +303,97 @@ func flatten_terrain() -> void:
 
 # ───────────────────────── Toques en el agua ─────────────────────────
 
-func _unhandled_input(event: InputEvent) -> void:
+## Pantalla → mundo (la cámara puede estar acercada).
+func _w(screen: Vector2) -> Vector2:
+	return cam.position + (screen - get_viewport_rect().size * 0.5) / cam.zoom.x
+
+
+func _set_zoom(z: float, center: Vector2) -> void:
+	var vp := get_viewport_rect().size
+	z = clampf(z, 1.0, ZOOM_MAX)
+	var half := vp * 0.5 / z
+	cam.zoom = Vector2(z, z)
+	cam.position = Vector2(clampf(center.x, half.x, vp.x - half.x), clampf(center.y, half.y, vp.y - half.y))
+	# El resplandor de la pared sigue a la pecera en pantalla.
+	var tl := (tank_rect.position - cam.position) * z + vp * 0.5
+	_room.material.set_shader_parameter("tank", Vector4(tl.x, tl.y, tank_rect.size.x * z, tank_rect.size.y * z))
+
+
+func _zoom_gestures(event: InputEvent) -> bool:
+	if hud._tutorial and is_instance_valid(hud._tutorial):
+		return false                                   # durante el tutorial, sin zoom
+	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		var z: float = cam.zoom.x * (1.15 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.15)
+		var anchor := _w(event.position)
+		_set_zoom(z, anchor - (event.position - get_viewport_rect().size * 0.5) / clampf(z, 1.0, ZOOM_MAX))
+		return true
 	if event is InputEventScreenTouch:
-		var p := tank.to_local(event.position)
+		if event.pressed:
+			_touches[event.index] = event.position
+			if _touches.size() == 1:
+				_gesture = false
+		else:
+			_touches.erase(event.index)
+		if _touches.size() >= 2:
+			var ps: Array = _touches.values()
+			var mid: Vector2 = (ps[0] + ps[1]) * 0.5
+			_pinch = {"d": maxf(10.0, ps[0].distance_to(ps[1])), "z": cam.zoom.x, "w": _w(mid)}
+			_gesture = true
+			_drag_idx = -1
+			_drag_equip = ""
+			_last_drag = Vector2.INF
+			return true
+		if not _pinch.is_empty():
+			_pinch = {}
+			return true
+	elif event is InputEventScreenDrag:
+		_touches[event.index] = event.position
+		if not _pinch.is_empty() and _touches.size() >= 2:
+			var ps: Array = _touches.values()
+			var mid: Vector2 = (ps[0] + ps[1]) * 0.5
+			var z := clampf(float(_pinch.z) * ps[0].distance_to(ps[1]) / float(_pinch.d), 1.0, ZOOM_MAX)
+			_set_zoom(z, _pinch.w - (mid - get_viewport_rect().size * 0.5) / z)
+			return true
+		# Con la pecera acercada, arrastrar un dedo la mueve (solo sin herramienta en la mano).
+		if mode == Mode.NORMAL and cam.zoom.x > 1.01 and _tap_from != Vector2.INF \
+				and (_gesture or event.position.distance_to(_tap_from) > 14.0):
+			_gesture = true
+			_set_zoom(cam.zoom.x, cam.position - event.relative / cam.zoom.x)
+			return true
+	return false
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _zoom_gestures(event):
+		return
+	if event is InputEventScreenTouch:
+		var p := tank.to_local(_w(event.position))
 		# La tapa (luz) queda por encima del agua: también se puede tocar.
 		var inside := Rect2(0, -34, tank.size.x, tank.size.y + 34).has_point(p)
 		if not event.pressed:
 			_last_drag = Vector2.INF
+			# Los toques normales actúan al soltar: así un pellizco o un arrastre no abren nada sin querer.
+			if mode == Mode.NORMAL and not _gesture and _tap_from != Vector2.INF and event.position.distance_to(_tap_from) < 14.0:
+				_tap(tank.to_local(_w(_tap_from)))
+			if _touches.is_empty():
+				_gesture = false
+				_tap_from = Vector2.INF
 			if mode == Mode.EDIT and sculpt:
 				tank.rebuild()                 # recoloca burbujas del cofre, etc.
 				Game.save_game()
 			elif mode == Mode.EDIT:
 				_end_decor_drag()
 			return
-		var prop := prop_at(event.position)
+		# Las burbujas de premio se recogen con cualquier herramienta en la mano.
+		var rw := tank.overlay.reward_at(p)
+		if rw >= 0:
+			tank.overlay.collect(rw)
+			return
+		var prop := prop_at(_w(event.position))
 		if prop != "":
 			use_prop(prop)
 			return
+		_tap_from = event.position
 		if not inside:
 			return
 		match mode:
@@ -336,23 +425,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif _drag_idx >= 0:
 					_drag_off = Game.decor[_drag_idx].x * tank.size.x - p.x
 			Mode.NORMAL:
-				var a := tank.fish_at(p)
-				var slot := tank.equipment_at(p)
-				if a:
-					hud.open_fish(a.data.id)
-				elif slot != "":
-					hud.open_equipment(slot)
-				else:
-					tank.startle(p)
+				pass                                     # se resuelve al soltar (_tap)
 	elif event is InputEventScreenDrag and mode == Mode.EDIT and sculpt:
-		var p := tank.to_local(event.position)
+		var p := tank.to_local(_w(event.position))
 		if _last_drag == Vector2.INF or not Rect2(Vector2.ZERO, tank.size).has_point(p):
 			return
 		# Arrastrar hacia arriba amontona arena; hacia abajo la quita.
 		_sculpt(p, (_last_drag.y - p.y) / tank.size.y * 0.9)
 		_last_drag = p
 	elif event is InputEventScreenDrag and mode == Mode.EDIT and (_drag_idx >= 0 or _drag_equip != ""):
-		var p := tank.to_local(event.position)
+		var p := tank.to_local(_w(event.position))
 		if p.distance_to(_drag_from) > 8.0:
 			_drag_moved = true
 		if _drag_equip != "":
@@ -360,7 +442,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			tank.set_decor_x(_drag_idx, p.x + _drag_off)
 	elif event is InputEventScreenDrag and (mode == Mode.CLEAN or mode == Mode.VACUUM):
-		var p := tank.to_local(event.position)
+		var p := tank.to_local(_w(event.position))
 		if not Rect2(Vector2.ZERO, tank.size).has_point(p):
 			return
 		if _last_drag == Vector2.INF:
@@ -374,6 +456,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				tank.vacuum_stroke(q)
 		_last_drag = p
+
+
+func _tap(p: Vector2) -> void:
+	if not Rect2(0, -34, tank.size.x, tank.size.y + 34).has_point(p):
+		return
+	var a := tank.fish_at(p)
+	var slot := tank.equipment_at(p)
+	if a:
+		hud.open_fish(a.data.id)
+	elif slot != "":
+		hud.open_equipment(slot)
+	else:
+		tank.startle(p)
 
 
 ## Al soltar: si se movió, se guarda la posición; si fue un toque, se abren sus opciones.
@@ -497,10 +592,11 @@ func use_prop(k: String) -> void:
 			if mode == Mode.FEED:
 				set_mode(Mode.FEED)                  # soltar el bote
 			else:
-				hud.open_food_picker()
+				# Coge directamente la última comida (si se acabó, escamas); en el aviso de abajo se cambia.
+				pick_food(food_type if food_type == "escamas" or int(Game.food.get(food_type, 0)) > 0 else "escamas")
 
 
-## Desde el selector de comida: coge el bote con ese alimento.
+## Coge el bote con ese alimento (desde la estantería o los botones del aviso).
 func pick_food(id: String) -> void:
 	food_type = id
 	mode = Mode.NORMAL

@@ -5,7 +5,7 @@ extends Control
 
 const STEPS := [
 	{"text": "¡Hola! Te enseño lo básico en un minuto: alimentar, limpiar, mantener el equipo, criar y decorar.", "wait": "button", "button": "¡Vamos!"},
-	{"text": "Tus peces tienen hambre: el bocadillo dice qué comida quieren. Toca el bote «Comida» de la estantería y coge escamas.", "target": "prop:food", "wait": "mode_feed"},
+	{"text": "Tus peces tienen hambre: el bocadillo dice qué comida quieren. Toca el bote «Comida» de la estantería para cogerlo.", "target": "prop:food", "wait": "mode_feed"},
 	{"text": "Toca el agua para echar escamas. Ojo: algunos peces solo comen un alimento, y lo que sobra se pudre y ensucia.", "target": "tank", "wait": "fed"},
 	{"text": "Con el tiempo salen algas en el cristal, poco a poco. Coge el limpiacristales de la estantería…", "target": "prop:sponge", "wait": "mode_clean", "care": true},
 	{"text": "…y frota el cristal con el dedo hasta que brille.", "target": "tank", "wait": "cleaned", "care": true},
@@ -15,6 +15,7 @@ const STEPS := [
 	{"text": "Si un pez tiene molestias, su ficha te dice qué hacer; el bote «Agua» trae pH+, pH−, oxígeno y antialgas. Ahora, para criar, abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
 	{"text": "Dos adultos de la misma especie, sanos y felices, ponen un huevo. Las crías heredan colores, patrón y mutaciones: ¡los raros valen mucho más!", "wait": "button", "button": "Entendido"},
 	{"text": "Por último, pulsa «Decorar»: arrastra plantas, adornos y aparatos donde quieras, o moldea la arena para hacer montañas.","target": "bar:edit", "wait": "mode_edit"},
+	{"text": "Los peces contentos sueltan burbujas con monedas: ¡tócalas! Con dos dedos acercas la pecera como una foto. Y si no sabes qué hacer, el botón amarillo de abajo te lo dice.", "wait": "button", "button": "¡Genial!"},
 	{"text": "¡Listo! Las misiones te irán guiando. Disfruta de tu acuario.", "wait": "button", "button": "¡A bucear!"},
 ]
 

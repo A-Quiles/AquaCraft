@@ -491,6 +491,7 @@ const DAILY := [
 	{"id": "artemia", "text": "Da artemia %d veces", "min": 2, "max": 4, "coins": 60, "xp": 20},
 	{"id": "bought", "text": "Compra %d cosas en la tienda", "min": 1, "max": 2, "coins": 50, "xp": 15},
 	{"id": "maint", "text": "Haz %d mantenimientos del equipo", "min": 1, "max": 3, "coins": 70, "xp": 20},
+	{"id": "bubbles", "text": "Recoge %d burbujas de premio", "min": 3, "max": 6, "coins": 60, "xp": 20},
 	{"id": "orders", "text": "Entrega %d pedido(s) a clientes", "min": 1, "max": 2, "coins": 90, "xp": 30},
 	{"id": "pruned", "text": "Poda %d planta(s)", "min": 1, "max": 1, "coins": 50, "xp": 15},
 	{"id": "vacuumed", "text": "Aspira el fondo %d veces", "min": 2, "max": 4, "coins": 50, "xp": 15},

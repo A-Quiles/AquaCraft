@@ -16,6 +16,9 @@ var _edit_row: HBoxContainer          ## Decorar: mover objetos / moldear arena
 var _sculpt_btn: Button
 var _flat_btn: Button
 var _names_btn: Button                ## mostrar / ocultar nombres sobre los peces
+var _food_row: HBoxContainer          ## dando de comer: botones para cambiar de comida
+var _next_btn: Button                 ## "qué hago ahora": la siguiente cosa útil, a un toque
+var _next_action := ""
 var _sheet: Control
 var _modal: Modal
 var _temp_alarm := false
@@ -199,6 +202,8 @@ func _build_bottom() -> void:
 	_flat_btn.pressed.connect(func(): main.flatten_terrain())
 	_edit_row.add_child(_flat_btn)
 	hv.add_child(_edit_row)
+	_food_row = UI.hbox(8)
+	hv.add_child(_food_row)
 	_hint.add_child(hv)
 	v.add_child(_hint)
 
@@ -240,6 +245,22 @@ func _build_bottom() -> void:
 		Game.save_game()
 		_style_names())
 	add_child(_names_btn)
+	_next_btn = Button.new()
+	_next_btn.focus_mode = Control.FOCUS_NONE
+	_next_btn.add_theme_font_override("font", UI.bold)
+	_next_btn.add_theme_font_size_override("font_size", 20)
+	_next_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_next_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	UI.button_colors(_next_btn, UI.SUN, UI.SUN_D)
+	for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+		_next_btn.add_theme_color_override(k, UI.NAVY)
+	_next_btn.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	_next_btn.offset_left = 18
+	_next_btn.offset_right = -204
+	_next_btn.offset_top = -nb - 58
+	_next_btn.offset_bottom = -nb
+	_next_btn.pressed.connect(func(): _do_next(_next_action))
+	add_child(_next_btn)
 	_mission_dot = Dot.new()
 	_mission_dot.color = UI.BAD
 	_mission_dot.custom_minimum_size = Vector2(22, 22)
@@ -286,6 +307,24 @@ func refresh_mode() -> void:
 			else "Arrastra plantas, adornos o aparatos · tócalos para más opciones"}.get(main.mode, "")
 	_edit_row.visible = main.mode == main.Mode.EDIT
 	_names_btn.visible = main.mode == main.Mode.NORMAL
+	_refresh_next()
+	for c in _food_row.get_children():
+		c.queue_free()
+	_food_row.visible = main.mode == main.Mode.FEED
+	if main.mode == main.Mode.FEED:
+		for id in Catalog.FOOD_ORDER:
+			var n := -1 if id == "escamas" else int(Game.food.get(id, 0))
+			if n == 0:
+				continue
+			var on: bool = id == main.food_type
+			var nm: String = Catalog.FOODS[id].name.get_slice(" ", 0)
+			var b := UI.button(nm if n < 0 else "%s %d" % [nm, n], UI.CORAL if on else UI.SAND, UI.CORAL_D if on else Color("e2d3bd"))
+			b.add_theme_font_size_override("font_size", 19)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			if not on:
+				b.add_theme_color_override("font_color", UI.NAVY)
+			b.pressed.connect(main.pick_food.bind(id))
+			_food_row.add_child(b)
 	_style_names()
 	_sculpt_btn.text = "Mover objetos" if main.sculpt else "Moldear la arena"
 	_flat_btn.visible = main.sculpt
@@ -322,6 +361,7 @@ func refresh() -> void:
 	var dirt := maxf(w.dirt, w.waste)
 	_chip("clean", "%d%%" % roundi(100.0 - dirt), 0 if dirt < 40.0 else (1 if dirt < 70.0 else 2))
 	_mission_dot.visible = Game.has_claimable()
+	_refresh_next()
 
 
 func _chip(k: String, text: String, level: int) -> void:
@@ -593,34 +633,6 @@ func open_water_panel() -> void:
 			Game.top_up()
 			m.close())
 		list.add_child(_pick_row(Previews.icon("ph", 70, 50), "Agua dulce", "Baja la salinidad 2 milésimas. Úsala cuando se evapore el agua.", [top]))
-	_show_modal(m)
-
-
-## Bote «Comida»: elige qué alimento coges y a cuál de tus peces le gusta.
-func open_food_picker() -> void:
-	var m := Modal.new()
-	m.centered(UI.title("¿Qué comida?", 38))
-	for id in Catalog.FOOD_ORDER:
-		var fd: Dictionary = Catalog.FOODS[id]
-		var n := -1 if id == "escamas" else int(Game.food.get(id, 0))
-		var eaters := {}
-		for f in Game.fish:
-			if id in Catalog.SPECIES[f.genes.sp].diet:
-				eaters[Catalog.SPECIES[f.genes.sp].name] = true
-		var desc: String = ("Lo comen: " + ", ".join(eaters.keys())) if not eaters.is_empty() else "Ninguno de tus peces lo come."
-		var act: Button
-		if n == 0:
-			act = UI.price_button(fd.price, "coins", "+%d" % fd.pack)
-			act.pressed.connect(func():
-				Game.buy_food(id)
-				m.close()
-				open_food_picker())
-		else:
-			act = UI.button("Coger", UI.CORAL, UI.CORAL_D)
-			act.pressed.connect(func():
-				m.close()
-				main.pick_food(id))
-		m.box.add_child(_pick_row(Previews.art("food", id, 70), "%s  %s" % [fd.name, "∞" if n < 0 else "×%d" % n], desc, [act]))
 	_show_modal(m)
 
 
@@ -959,3 +971,69 @@ func open_streak() -> void:
 		m.close())
 	m.box.add_child(ok)
 	_show_modal(m)
+
+
+# ───────────────────────── ¿Qué hago ahora? ─────────────────────────
+
+## La cosa más útil que se puede hacer ahora mismo: [texto, acción]. Acciones: missions[:N], feed, fish:<id>,
+## equip:<slot>, shop:<N>, clean, vacuum.
+func next_step() -> Array:
+	var w := Game.water()
+	if Game.story().size() > 0 and Game.story_progress() >= int(Game.story().target):
+		return ["¡Misión cumplida! Recoge tu premio", "missions"]
+	for o in Game.orders:
+		if Game.fish.any(func(f): return Game.order_matches(o, f)):
+			return ["Entrega un pez a %s" % o.who, "missions:1"]
+	var hungry := Game.fish.filter(func(f): return f.hunger > 60.0)
+	if not hungry.is_empty():
+		return ["%s tiene hambre: dale de comer" % hungry[0].name, "feed"]
+	for f in Game.fish:
+		if f.get("dis", "") != "" and float(f.get("cure_at", 0.0)) <= 0.0:
+			return ["%s está enfermo: mira qué le pasa" % f.name, "fish:%d" % f.id]
+	var need := Game.needs_maintenance()
+	if not need.is_empty():
+		return ["%s necesita mantenimiento" % Catalog.EQUIPMENT[Game.equipment[need[0]]].name, "equip:" + need[0]]
+	if float(Game.mk("algae")) > 0.0:
+		if Game.equipment.filter == "":
+			return ["Compra un filtro: frena las algas", "shop:2"]
+		if w.dirt > 45.0:
+			return ["El cristal está sucio: límpialo", "clean"]
+		if w.waste > 45.0:
+			return ["El fondo está sucio: pasa el sifón", "vacuum"]
+	for f in Game.fish:
+		var pr := Game.fish_problems(f)
+		if not pr.is_empty():
+			return ["%s no está a gusto: mira su ficha" % f.name, "fish:%d" % f.id]
+	for m in Game.daily.get("missions", []):
+		if not m.claimed and m.progress >= m.target:
+			return ["Diaria completada: recoge el premio", "missions"]
+	if Game.space_left() > 0:
+		for f in Game.fish:
+			if Game.breed_block(f) == "" and not Game.breed_partners(f).is_empty():
+				return ["%s puede criar: busca pareja" % f.name, "fish:%d" % f.id]
+	if not Game.orders.is_empty():
+		return ["Hay pedidos de clientes: mira qué buscan", "missions:1"]
+	if Game.story().size() > 0:
+		return ["Misión: %s" % Game.story().text, "missions"]
+	return ["", ""]
+
+
+func _refresh_next() -> void:
+	if _next_btn == null:
+		return
+	var tut: bool = _tutorial != null and is_instance_valid(_tutorial)
+	var st := next_step() if main.mode == main.Mode.NORMAL and not tut and Game.started else ["", ""]
+	_next_action = st[1]
+	_next_btn.text = "   " + st[0]
+	_next_btn.visible = st[0] != ""
+
+
+func _do_next(a: String) -> void:
+	match a.get_slice(":", 0):
+		"missions": open_missions(int(a.get_slice(":", 1)) if a.contains(":") else 0)
+		"feed": main.use_prop("food")
+		"fish": open_fish(int(a.get_slice(":", 1)))
+		"equip": open_equipment(a.get_slice(":", 1))
+		"shop": open_shop(int(a.get_slice(":", 1)))
+		"clean": main.set_mode(main.Mode.CLEAN)
+		"vacuum": main.set_mode(main.Mode.VACUUM)
