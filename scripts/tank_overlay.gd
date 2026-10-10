@@ -8,6 +8,7 @@ var parts: Array = []                ## [pos, vel, life, max_life, kind, size]
 var ripples: Array = []              ## [pos, age]
 var sponge_pos := Vector2(-999, -999)
 var sponge_t := 0.0
+var tool := "sponge"                 ## sponge (limpiacristales) / siphon (sifón)
 var selected_id := -1
 
 
@@ -69,8 +70,22 @@ func _draw() -> void:
 				_heart(p[0], p[5] * 1.6, Color(1.0, 0.45, 0.6, life))
 			"sparkle":
 				_star(p[0], p[5] * 1.8 * life + 1.0, Color(1, 1, 0.9, life))
+			"dirt":
+				draw_circle(p[0], p[5] * 0.6, Color(0.3, 0.22, 0.1, life))
 	if sponge_t > 0.0:
-		_sponge(sponge_pos, minf(1.0, sponge_t * 3.0))
+		if tool == "siphon":
+			_siphon(sponge_pos, minf(1.0, sponge_t * 3.0))
+		else:
+			_sponge(sponge_pos, minf(1.0, sponge_t * 3.0))
+	if Game.show_names:
+		var font := UI.bold
+		for a in tank.actors.values():
+			var nm: String = a.data.name
+			var fs := 17
+			var w := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			var p: Vector2 = a.position + Vector2(-w * 0.5, a.size_px().y * 0.5 + 18.0)
+			draw_string_outline(font, p, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 5, Color(0.04, 0.12, 0.19, 0.75))
+			draw_string(font, p, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
 
 
 func _bubble(p: Vector2, kind: String) -> void:
@@ -106,3 +121,13 @@ func _sponge(p: Vector2, a: float) -> void:
 	draw_rect(Rect2(r.position, Vector2(60, 12)), Color(0.35, 0.75, 0.45, a))
 	for h in [Vector2(-14, 4), Vector2(4, 10), Vector2(16, 2), Vector2(-4, 14)]:
 		draw_circle(p + h, 3.0, Color(0.85, 0.65, 0.2, a))
+
+
+## Sifón de acuarista: campana transparente con el tubo saliendo por arriba.
+func _siphon(p: Vector2, a: float) -> void:
+	var bell := Rect2(p - Vector2(16, 58), Vector2(32, 58))
+	draw_line(Vector2(p.x + 6, bell.position.y), Vector2(p.x + 30, -30), Color(0.85, 0.95, 1.0, 0.7 * a), 7.0, true)
+	draw_rect(bell, Color(0.85, 0.95, 1.0, 0.25 * a))
+	draw_rect(bell, Color(0.9, 1.0, 1.0, 0.8 * a), false, 2.0)
+	draw_rect(Rect2(bell.position + Vector2(4, 0), Vector2(5, bell.size.y)), Color(1, 1, 1, 0.35 * a))
+	draw_rect(Rect2(bell.position + Vector2(-2, -6), Vector2(36, 8)), Color(0.25, 0.55, 0.85, a))

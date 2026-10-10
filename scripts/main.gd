@@ -4,9 +4,10 @@ extends Node2D
 const ROOM := preload("res://shaders/room.gdshader")
 const SHELF_SPACE := 190.0           ## alto reservado sobre la pecera: estantería de pared + hueco hasta la tapa
 const SHELF_Y := 104.0               ## balda de la estantería, bajo la barra superior
-const SHELF_K := 0.78                ## escala de los objetos de la estantería
+const SHELF_ITEMS := ["sponge", "food", "water", "siphon"]
+const SHELF_NAMES := {"sponge": "Limpiar", "food": "Comida", "water": "Agua", "siphon": "Sifón"}
 
-enum Mode { NORMAL, FEED, CLEAN, EDIT }
+enum Mode { NORMAL, FEED, CLEAN, EDIT, VACUUM }
 
 var mode := Mode.NORMAL
 var food_type := "escamas"
@@ -96,6 +97,19 @@ func _screenshot() -> void:
 				_sculpt(Vector2(tank.size.x * 0.7, 0), 0.004)
 				_sculpt(Vector2(tank.size.x * 0.95, 0), -0.0015)
 		"equip": hud.open_equipment(open.get_slice(":", 1))
+		"food": hud.open_food_picker()
+		"water": hud.open_water_panel()
+		"names":
+			Game.show_names = true
+			hud.refresh_mode()
+		"floor":
+			Game._ensure_floor()
+			for i in Game.floor_dirt.size():
+				Game.floor_dirt[i] = 0.75
+			Game.floor_changed.emit()
+			set_mode(Mode.VACUUM)
+			for i in 30:
+				tank.vacuum_stroke(Vector2(tank.size.x * (0.1 + i * 0.012), tank.surface_y(tank.size.x * (0.1 + i * 0.012)) - 10.0))
 		"wear":
 			for slot in Game.equipment:
 				Game.equip_cond[slot] = float(open.get_slice(":", 1))
@@ -106,6 +120,8 @@ func _screenshot() -> void:
 			await get_tree().process_frame
 			for i in int(open.get_slice(":", 1)):
 				hud._tutorial._advance()
+			if Game._arg("then") == "shop":
+				hud.open_shop(0)
 		"algae":
 			for i in Game.algae.size():
 				Game.algae[i] = mini(255, int(Game.algae_weights()[i] * float(open.get_slice(":", 1))))
@@ -154,7 +170,7 @@ func _layout() -> void:
 	var top := safe.x + 196.0
 	var bottom := safe.y + 150.0
 	var tier := Game.tank_tier
-	var stand: float = [104.0, 96.0, 84.0, 64.0, 40.0][tier]
+	var stand: float = [120.0, 96.0, 84.0, 64.0, 40.0][tier]
 	var avail := Rect2(0, top, vp.x, vp.y - top - bottom - stand)
 	# La pecera crece con la pantalla: en móviles altos aprovecha la altura en vez de dejar pared vacía.
 	# Pecera más contenida; el conjunto mueble + pecera se centra en la pantalla en móviles altos.
@@ -251,6 +267,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			Mode.CLEAN:
 				_last_drag = p
 				tank.clean_stroke(p)
+			Mode.VACUUM:
+				_last_drag = p
+				tank.vacuum_stroke(p)
 			Mode.EDIT when sculpt:
 				_last_drag = p
 			Mode.EDIT:
@@ -291,7 +310,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			tank.preview_equip_x(_drag_equip, p.x + _drag_off)
 		else:
 			tank.set_decor_x(_drag_idx, p.x + _drag_off)
-	elif event is InputEventScreenDrag and mode == Mode.CLEAN:
+	elif event is InputEventScreenDrag and (mode == Mode.CLEAN or mode == Mode.VACUUM):
 		var p := tank.to_local(event.position)
 		if not Rect2(Vector2.ZERO, tank.size).has_point(p):
 			return
@@ -300,7 +319,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Interpolamos para que un deslizamiento rápido no deje huecos.
 		var steps := maxi(1, int(_last_drag.distance_to(p) / 14.0))
 		for i in steps:
-			tank.clean_stroke(_last_drag.lerp(p, float(i + 1) / steps))
+			var q := _last_drag.lerp(p, float(i + 1) / steps)
+			if mode == Mode.CLEAN:
+				tank.clean_stroke(q)
+			else:
+				tank.vacuum_stroke(q)
 		_last_drag = p
 
 
@@ -345,7 +368,7 @@ func _draw_furniture() -> void:
 	var vp := get_viewport_rect().size
 	var r := tank_rect
 	_draw_wall(ci, vp, r)
-	var top_y := r.end.y + 14.0
+	var top_y := r.end.y + stand_gap()
 	var x0 := 16.0 if Game.tank_tier < 4 else 0.0
 	var x1 := vp.x - x0
 	# Sombra en la pared y encimera
@@ -415,39 +438,34 @@ func prop_at(p: Vector2) -> String:
 	return ""
 
 
-## Coger/soltar un objeto de la estantería: botes de comida, limpiador o productos.
+## Coger/soltar un objeto de la estantería. Los botes abren un selector (qué comida / qué producto).
 func use_prop(k: String) -> void:
-	if k == "sponge":
-		set_mode(Mode.CLEAN)
-	elif k.begins_with("food:"):
-		var id := k.substr(5)
-		if id != "escamas" and int(Game.food.get(id, 0)) <= 0:
-			hud.show_toast("No te queda %s. Cómpralo en la tienda." % Catalog.FOODS[id].name.to_lower(), "food")
-			return
-		if mode == Mode.FEED and food_type == id:
-			set_mode(Mode.FEED)
-		else:
-			food_type = id
-			mode = Mode.NORMAL
-			set_mode(Mode.FEED)
-	elif k.begins_with("prod:"):
-		hud.open_product(k.substr(5))
+	match k:
+		"sponge": set_mode(Mode.CLEAN)
+		"siphon": set_mode(Mode.VACUUM)
+		"water": hud.open_water_panel()
+		"food":
+			if mode == Mode.FEED:
+				set_mode(Mode.FEED)                  # soltar el bote
+			else:
+				hud.open_food_picker()
+
+
+## Desde el selector de comida: coge el bote con ese alimento.
+func pick_food(id: String) -> void:
+	food_type = id
+	mode = Mode.NORMAL
+	set_mode(Mode.FEED)
 
 
 func _draw_props() -> void:
 	var ci := _props
 	prop_rects.clear()
 	var vp := get_viewport_rect().size
-	var k := SHELF_K
-	var items: Array = ["sponge"]
-	for f in Catalog.FOOD_ORDER:
-		items.append("food:" + f)
-	for p in Catalog.PRODUCT_ORDER:
-		items.append("prod:" + p)
 	# Balda de pared arriba a la derecha, lejos de la pecera (el cuadro queda a la izquierda).
-	var step := 60.0 * k
-	var sw := step * items.size() + 24.0
-	var sx := vp.x - sw - 18.0
+	var step := 88.0
+	var sw := step * SHELF_ITEMS.size() + 20.0
+	var sx := vp.x - sw - 22.0
 	var sy := Hud.safe_margins().x + 196.0 + SHELF_Y
 	ci.draw_rect(Rect2(sx + 4, sy + 6, sw, 12), Color(0, 0, 0, 0.18))
 	for bx in [sx + 26.0, sx + sw - 34.0]:
@@ -455,52 +473,50 @@ func _draw_props() -> void:
 	ci.draw_rect(Rect2(sx, sy, sw, 12), Color("b07a4f"))
 	ci.draw_rect(Rect2(sx, sy + 9, sw, 3), Color("8a5a36"))
 	var font := UI.bold
-	for i in items.size():
-		var key: String = items[i]
-		var lifted := (key == "sponge" and mode == Mode.CLEAN) or (key == "food:" + food_type and mode == Mode.FEED)
-		var base := Vector2(sx + 12.0 + step * (i + 0.5), sy - (12.0 if lifted else 0.0))
-		# Cada objeto se dibuja en coordenadas propias (base = 0) y a escala k.
-		ci.draw_set_transform(base, 0.0, Vector2(k, k))
-		var r := Rect2()
+	for i in SHELF_ITEMS.size():
+		var key: String = SHELF_ITEMS[i]
+		var lifted := (key == "sponge" and mode == Mode.CLEAN) or (key == "food" and mode == Mode.FEED) or (key == "siphon" and mode == Mode.VACUUM)
+		var base := Vector2(sx + 10.0 + step * (i + 0.5), sy - (12.0 if lifted else 0.0))
 		if lifted:
-			ci.draw_circle(Vector2(0, -32), 40, Color(1.0, 0.9, 0.5, 0.25))
-		if key == "sponge":
-			# Limpiacristales magnético: asa + esponja.
-			r = Rect2(Vector2(-30, -34), Vector2(60, 34))
-			ci.draw_rect(Rect2(r.position + Vector2(0, 12), Vector2(60, 22)), Color("ffd34d"))
-			for h in [Vector2(-18, -10), Vector2(-2, -6), Vector2(14, -12), Vector2(22, -4)]:
-				ci.draw_circle(h, 2.6, Color("e0a92c"))
-			ci.draw_rect(Rect2(r.position + Vector2(0, 4), Vector2(60, 9)), Color("2e9e6a"))
-			ci.draw_rect(Rect2(r.position + Vector2(14, -6), Vector2(32, 10)), Color("3a4552"))
-			r = r.grow(4)
-		elif key.begins_with("food:"):
-			var id := key.substr(5)
-			var col := Catalog.color(Catalog.FOODS[id].col)
-			var jar := Rect2(Vector2(-20, -54), Vector2(40, 54))
-			ci.draw_rect(jar, Color(0.95, 0.97, 1.0, 0.55))
-			ci.draw_rect(Rect2(jar.position + Vector2(3, 18), Vector2(34, 33)), col.darkened(0.1))
-			ci.draw_rect(Rect2(jar.position + Vector2(-2, -8), Vector2(44, 10)), col.darkened(0.45))
-			ci.draw_rect(Rect2(jar.position + Vector2(6, 22), Vector2(28, 16)), Color("fff3df"))
-			var n := "∞" if id == "escamas" else str(Game.food.get(id, 0))
-			ci.draw_string(font, jar.position + Vector2(0, 35), n, HORIZONTAL_ALIGNMENT_CENTER, 40, 16, UI.NAVY)
-			ci.draw_rect(Rect2(jar.position + Vector2(4, 2), Vector2(4, 14)), Color(1, 1, 1, 0.5))
-			r = jar.grow(4)
-		else:
-			var id := key.substr(5)
-			var pr: Dictionary = Catalog.PRODUCTS[id]
-			var col := Catalog.color(pr.col)
-			var bot := Rect2(Vector2(-15, -44), Vector2(30, 44))
-			ci.draw_rect(bot, col)
-			ci.draw_rect(Rect2(bot.position + Vector2(8, -14), Vector2(14, 14)), Color("eeeeee"))
-			ci.draw_rect(Rect2(bot.position + Vector2(10, -22), Vector2(10, 9)), col.darkened(0.4))
-			ci.draw_rect(Rect2(bot.position + Vector2(3, 12), Vector2(24, 16)), Color("fffaf2"))
-			ci.draw_string(font, bot.position + Vector2(0, 25), pr.short, HORIZONTAL_ALIGNMENT_CENTER, 30, 13, UI.NAVY)
-			var cnt: int = Game.products.get(id, 0)
-			ci.draw_circle(bot.end + Vector2(-2, -42), 11, UI.NAVY if cnt > 0 else UI.BAD)
-			ci.draw_string(font, bot.end + Vector2(-12, -37), str(cnt), HORIZONTAL_ALIGNMENT_CENTER, 20, 14, Color.WHITE)
-			r = Rect2(bot.position + Vector2(0, -22), bot.size + Vector2(0, 22)).grow(4)
-		prop_rects[key] = Rect2(base + r.position * k, r.size * k)
-	ci.draw_set_transform(Vector2.ZERO)
+			ci.draw_circle(base + Vector2(0, -32), 44, Color(1.0, 0.9, 0.5, 0.25))
+		var r := Rect2()
+		match key:
+			"sponge":
+				# Limpiacristales magnético: asa + esponja.
+				var b := Rect2(base + Vector2(-30, -34), Vector2(60, 34))
+				ci.draw_rect(Rect2(b.position + Vector2(0, 12), Vector2(60, 22)), Color("ffd34d"))
+				for h in [Vector2(-18, -10), Vector2(-2, -6), Vector2(14, -12), Vector2(22, -4)]:
+					ci.draw_circle(base + h, 2.6, Color("e0a92c"))
+				ci.draw_rect(Rect2(b.position + Vector2(0, 4), Vector2(60, 9)), Color("2e9e6a"))
+				ci.draw_rect(Rect2(b.position + Vector2(14, -6), Vector2(32, 10)), Color("3a4552"))
+				r = Rect2(b.position + Vector2(0, -10), b.size + Vector2(0, 10))
+			"food":
+				var col := Catalog.color(Catalog.FOODS[food_type].col) if mode == Mode.FEED else Color("ff8a3d")
+				ShopArt.jar(ci, base, col, "Comida", 1.0, 13)
+				r = Rect2(base + Vector2(-30, -78), Vector2(60, 78))
+			"water":
+				ShopArt.bottle(ci, base, Color("3f8cff"), "Agua", 1.05, 13)
+				var n := 0
+				for id in Catalog.PRODUCT_ORDER:
+					n += int(Game.products.get(id, 0))
+				ci.draw_circle(base + Vector2(20, -56), 12, UI.NAVY if n > 0 else UI.BAD)
+				ci.draw_string(font, base + Vector2(8, -51), str(n), HORIZONTAL_ALIGNMENT_CENTER, 24, 14, Color.WHITE)
+				r = Rect2(base + Vector2(-26, -86), Vector2(52, 86))
+			"siphon":
+				# Sifón: campana transparente con su tubo enrollado.
+				var bell := Rect2(base + Vector2(-14, -50), Vector2(28, 50))
+				ci.draw_arc(base + Vector2(10, -58), 16, -PI * 0.9, PI * 0.6, 20, Color(0.85, 0.95, 1.0, 0.85), 5.0, true)
+				ci.draw_rect(bell, Color(0.85, 0.95, 1.0, 0.35))
+				ci.draw_rect(bell, Color(0.9, 1.0, 1.0, 0.9), false, 2.0)
+				ci.draw_rect(Rect2(bell.position + Vector2(-2, -6), Vector2(32, 8)), Color(0.25, 0.55, 0.85))
+				r = Rect2(base + Vector2(-26, -80), Vector2(56, 80))
+		# Nombre debajo de la balda: se lee siempre.
+		var nm: String = SHELF_NAMES[key]
+		var w := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
+		var tp := Vector2(base.x - w * 0.5, sy + 36 + (12.0 if lifted else 0.0))
+		ci.draw_string_outline(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, 5, Color(0.04, 0.12, 0.19, 0.7))
+		ci.draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
+		prop_rects[key] = Rect2(r.position, r.size + Vector2(0, 52)).grow(6)
 
 
 func _draw_frame() -> void:
@@ -530,22 +546,40 @@ func _draw_frame() -> void:
 		ci.draw_rect(Rect2(x, r.position.y, 4, r.size.y), Color(0.75, 0.97, 0.92, 0.55) if not wood else dark)
 
 
-## Pecera redonda: canto del cristal, boca abierta y brillos (el agua ya va recortada en círculo).
+## Pecera redonda: canto del cristal, boca abierta, base plana sobre un soporte de madera y brillos.
 func _draw_bowl(ci: Node2D, r: Rect2) -> void:
 	var b := tank.bowl()
 	var c := r.position + b.position
 	var rad := b.size.x
 	var rim_y := r.position.y - r.size.x * 0.035
 	var a := asin(clampf((rim_y - c.y) / rad, -1.0, 1.0))       # ángulo del borde (lado derecho)
+	var ab := asin(clampf((r.end.y - c.y) / rad, -1.0, 1.0))    # ángulo donde empieza la base plana
 	var half := rad * cos(a)
-	ci.draw_arc(c, rad + 1.5, a, PI - a, 72, Color(0.75, 0.97, 0.92, 0.55), 4.0, true)
-	ci.draw_arc(c, rad - 3.0, PI * 0.15, PI * 0.85, 40, Color(0.75, 0.97, 0.92, 0.25), 6.0, true)
+	var flat := rad * cos(ab)
+	var glass := Color(0.75, 0.97, 0.92, 0.55)
+	ci.draw_arc(c, rad + 1.5, a, ab, 40, glass, 4.0, true)
+	ci.draw_arc(c, rad + 1.5, PI - ab, PI - a, 40, glass, 4.0, true)
+	# Fondo de vidrio grueso y plano.
+	ci.draw_rect(Rect2(c.x - flat, r.end.y - 5.0, flat * 2.0, 7.0), Color(0.8, 0.98, 0.95, 0.45))
+	ci.draw_line(Vector2(c.x - flat, r.end.y + 2.0), Vector2(c.x + flat, r.end.y + 2.0), glass, 3.0, true)
+	# Soporte: peana de madera torneada entre la bola y el mueble.
+	var plank := r.end.y + stand_gap()
+	var top_w := flat * 1.15
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(c.x - top_w, r.end.y + 2.0), Vector2(c.x + top_w, r.end.y + 2.0),
+		Vector2(c.x + top_w + 16.0, plank), Vector2(c.x - top_w - 16.0, plank)]), Color("8a5a36"))
+	ci.draw_rect(Rect2(c.x - top_w, r.end.y + 2.0, top_w * 2.0, 3.0), Color("b07a4f"))
+	ci.draw_line(Vector2(c.x - top_w - 8.0, plank - 5.0), Vector2(c.x + top_w + 8.0, plank - 5.0), Color(0, 0, 0, 0.18), 2.0)
 	var lip := DecorArt.ell(Vector2(c.x, rim_y), half, 9.0)
 	lip.append(lip[0])
 	ci.draw_polyline(lip, Color(0.85, 1.0, 0.97, 0.7), 3.0, true)
 	ci.draw_arc(c, rad * 0.86, PI + 0.25, PI + 0.85, 24, Color(1, 1, 1, 0.28), 9.0, true)
 	ci.draw_arc(c, rad * 0.78, PI + 0.32, PI + 0.55, 12, Color(1, 1, 1, 0.22), 5.0, true)
 	ci.draw_arc(c, rad * 0.9, -0.95, -0.55, 16, Color(1, 1, 1, 0.16), 6.0, true)
+
+
+## Hueco entre la pecera y la encimera: la redonda va sobre una peana.
+func stand_gap() -> float:
+	return 30.0 if Game.is_round() else 14.0
 
 
 ## Lo de la pecera es rectangular: en la redonda se tapan las esquinas con la propia pared (mismo shader).
@@ -563,7 +597,11 @@ func _draw_bowl_mask() -> void:
 		var pts := PackedVector2Array([Vector2(xo, y0), Vector2(c.x, y0)])
 		for i in 49:
 			var a := -PI * 0.5 + side * PI * i / 48.0
-			pts.append(c + Vector2(cos(a), sin(a)) * rad)
-		pts.append(Vector2(c.x, y1))
+			var q := c + Vector2(cos(a), sin(a)) * rad
+			if q.y >= y1:
+				# Base plana: el círculo se corta en el fondo de la pecera.
+				pts.append(Vector2(c.x + side * sqrt(maxf(0.0, rad * rad - pow(y1 - c.y, 2.0))), y1))
+				break
+			pts.append(q)
 		pts.append(Vector2(xo, y1))
 		_bowl_mask.draw_colored_polygon(pts, Color.WHITE)

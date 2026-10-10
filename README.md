@@ -5,7 +5,7 @@ Simulador *cozy* de acuarios para Android: cuida el agua, alimenta a tus peces, 
 
 <p align="center"><img src="store/feature_graphic.png" width="720"></p>
 
-## Qué incluye (v0.5)
+## Qué incluye (v0.6)
 
 | Sistema | Detalle |
 |---|---|
@@ -13,11 +13,13 @@ Simulador *cozy* de acuarios para Android: cuida el agua, alimenta a tus peces, 
 | Modos | Relax (sin algas, desgaste ni parámetros), Normal y Realista (márgenes estrictos, la habitación se enfría de noche, los peces pueden morir). Se cambia en Misiones |
 | Agua | Dulce o salada: cada una con sus peces, plantas/corales, sustratos y equipo. En salada la sal se concentra al evaporarse (reponer agua o instalar reposición automática). Se puede convertir la pecera |
 | Peces | 15 especies (9 de agua dulce, 6 marinas) con anatomía propia por shader: lomo y vientre, 7 tipos de cola, dorsal/anal con barrido, adiposa, barbillones, filamentos |
+| Nombres | Ponle nombre a cada pez y actívalos sobre la pecera con el botón «Nombres» |
 | Genética | Colores, patrón y tamaño heredados; mutaciones Neón, Albino, Velo, Color raro, Patrón raro y Gigante; 5 rarezas |
-| Cuidados | Hambre, salud, felicidad, temperatura, pH, oxígeno y algas que aparecen poco a poco en el cristal. Estantería física junto a la pecera: limpiacristales (se coge y se pasa por el cristal), botes de comida y productos (pH+, pH−, antialgas) |
+| Cuidados | Hambre, salud, felicidad, temperatura, pH, oxígeno, algas en el cristal y suciedad en el fondo. Estantería de pared con 4 objetos: limpiacristales, bote «Comida» (elige alimento), bote «Agua» (parámetros + pH+, pH−, oxígeno, sal marina, antialgas, reponer agua dulce) y sifón para aspirar el fondo. Cada molestia de un pez tiene remedio y su ficha te dice cuál |
+| Ritmo | Pausado y realista: un pez aguanta más de un día sin comer, las algas y el fondo tardan días en ensuciarse y estando fuera nadie muere (en Realista vuelven débiles) |
 | Dietas | Cada especie come lo suyo: corydoras solo gránulos de fondo, gramma y gobio de fuego solo artemia, cirujanos solo nori. El bocadillo de hambre enseña qué piden |
 | Peceras | Se empieza en una pecera redonda de cristal **sin ningún aparato**; luego Nano 20 L, Comunitario 60 L, Panorámico 200 L y Monumental 1000 L |
-| Equipo | 16 aparatos en 6 huecos (filtro, calentador, aireador, luz, termómetro, reposición) y 3 calidades: básico (barato, rinde menos, calienta despacio y **se rompe** si llega a 0%), estándar y pro. Cada pecera limita qué huecos y qué calidad admite. Desgaste visible (suciedad, luz que parpadea, aviso "!") y mantenimiento manteniendo pulsado |
+| Equipo | 16 aparatos en 6 huecos (filtro, calentador, aireador, luz, termómetro, reposición) y 3 calidades: básico (barato, rinde menos, calienta despacio y **se rompe** si llega a 0%), estándar y pro. Cada pecera limita qué huecos y qué calidad admite. Desgaste visible (suciedad, luz que parpadea, aviso "!") y mantenimiento manteniendo pulsado. Se pueden retirar y guardar para volver a instalarlos |
 | Decoración | Modo Decorar: arrastra cada pieza **y cada aparato** donde quieras, voltéala, ponla al fondo, en medio o delante de los peces, y guárdala en el inventario. **Moldear la arena**: desliza arriba/abajo para hacer montañas o valles (todo se apoya en el terreno) |
 | Mercado | Peces (+2 exóticos al día), 4 peceras, 12 equipos, 14 decoraciones, 5 sustratos, 3 comidas |
 | Tutorial | Guía interactiva la primera vez (alimentar, limpiar, mantenimiento, criar, decorar); se puede repetir desde Misiones |
@@ -74,7 +76,7 @@ xvfb-run godot --resolution 720x1280 -s tests/scroll_check.gd -- demo=1   # arra
 ```
 
 Capturas para la tienda (necesita pantalla): `godot -- demo=2 open=shop:0 shot=captura.png`
-(`demo=0..4` elige la pecera (0 = redonda), `water=salada` y `mode=realista` opcionales; `open` = `shop:N`, `fish:N`, `missions`, `thermo`, `feed`, `clean`, `dirty`, `edit`, `equip:filter`, `decor`, `tutorial:N`, `algae:N`, `wear:N`, `sculpt`).
+(`demo=0..4` elige la pecera (0 = redonda), `water=salada` y `mode=realista` opcionales; `open` = `shop:N`, `fish:N`, `missions`, `thermo`, `feed`, `clean`, `dirty`, `edit`, `equip:filter`, `decor`, `tutorial:N`, `algae:N`, `wear:N`, `sculpt`, `food`, `water`, `floor`, `names`).
 
 ## Publicar en Google Play
 

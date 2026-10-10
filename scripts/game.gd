@@ -9,6 +9,7 @@ signal fish_removed(id: int)
 signal eggs_changed
 signal tank_changed                  ## pecera, decoración, sustrato o equipo
 signal algae_changed
+signal floor_changed
 signal level_up(level: int)
 
 var save_path := "user://save.json"   ## demo usa otro fichero para no pisar la partida
@@ -16,7 +17,7 @@ const SAVE_VERSION := 2              ## 2: se añadió la pecera redonda al prin
 const GW := 40                       ## rejilla de algas del cristal
 const GH := 60
 const ROOM_TEMP := 23.0
-const HUNGER_PER_MIN := 0.21         ## 0 → 100 en ~8 h
+const HUNGER_PER_MIN := 0.05         ## 0 → 100 en ~33 h (un pez aguanta días sin comer)
 const MAX_OFFLINE := 48.0 * 3600.0
 const OFFLINE_STEP := 300.0
 
@@ -38,6 +39,10 @@ var owned_substrates: Array = ["grava"]
 var decor: Array = []                ## colocadas: {id, x (0..1), layer (0 fondo, 1 medio, 2 delante), flip}
 var decor_inv := {}                  ## guardadas: id → cantidad
 var terrain: Array = []              ## alturas del sustrato (Catalog.TERRAIN_N valores, fracción del alto)
+var floor_dirt: Array = []           ## suciedad del fondo por columnas (Catalog.FLOOR_N, 0..1)
+var equip_inv := {}                  ## aparatos retirados y guardados: id → cantidad
+var o2_until := 0.0                  ## pastillas de oxígeno: hasta cuándo actúan
+var show_names := false              ## nombres encima de los peces
 var food := {"granulos": 5, "artemia": 3}
 var products := {"ph_up": 1, "ph_down": 1, "antialgas": 1}
 var ph_adjust := 0.0                 ## efecto de los reguladores de pH (se disipa con el tiempo)
@@ -151,6 +156,7 @@ func _process(delta: float) -> void:
 	elif gap > 0.0:
 		_sim(gap, now)
 		_grow_algae(gap)
+		_grow_floor(gap)
 	last_sim = now
 	_check_daily()
 	_safety_net()
@@ -182,14 +188,17 @@ func new_game(game_mode := "normal", water_type := "dulce") -> void:
 	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
 	equip_cond = {}
 	equip_pos = {}
+	equip_inv = {}
 	terrain = []
+	floor_dirt = []
+	o2_until = 0.0
 	substrate = "aragonita" if marine else "grava"
 	owned_substrates = [substrate]
 	decor = [_decor_entry("roca_viva", 0.25), _decor_entry("anemona", 0.7)] if marine \
 		else [_decor_entry("vallisneria", 0.2), _decor_entry("rocas", 0.68)]
 	decor_inv = {}
 	food = {"granulos": 5, "artemia": 6, "nori": 4 if marine else 0}
-	products = {"ph_up": 1, "ph_down": 1, "antialgas": 1}
+	products = {"ph_up": 1, "ph_down": 1, "oxigeno": 1, "sal": 1 if marine else 0, "antialgas": 1}
 	ph_adjust = 0.0
 	algae_block_until = 0.0
 	fish = []
@@ -238,11 +247,12 @@ func room_temp() -> float:
 	return 21.0 + 1.5 * sin((h - 10.0) / 24.0 * TAU)
 
 
+## Reponer agua dulce: baja la salinidad 2 milésimas (pasarse también es malo: se corrige con sal).
 func top_up() -> void:
-	salinity = 1.0245
+	salinity = maxf(1.014, salinity - 0.002)
 	_bump("maint", 1)
 	add_xp(3)
-	toast.emit("Agua repuesta: salinidad en su punto", "ph")
+	toast.emit("Agua dulce repuesta: salinidad %.3f" % salinity, "ph")
 	changed.emit()
 	_dirty = true
 
@@ -280,7 +290,8 @@ func save_game() -> void:
 		"v": SAVE_VERSION, "mode": mode, "water": water_kind, "salinity": salinity, "coins": coins, "pearls": pearls, "level": level, "xp": xp,
 		"tank_tier": tank_tier, "equipment": equipment, "equip_cond": equip_cond, "equip_pos": equip_pos, "heater_target": heater_target,
 		"water_temp": water_temp, "substrate": substrate, "owned_substrates": owned_substrates,
-		"decor": decor, "decor_inv": decor_inv, "terrain": terrain, "food": food, "products": products, "ph_adjust": ph_adjust,
+		"decor": decor, "decor_inv": decor_inv, "terrain": terrain, "floor_dirt": floor_dirt, "equip_inv": equip_inv,
+		"o2_until": o2_until, "show_names": show_names, "food": food, "products": products, "ph_adjust": ph_adjust,
 		"algae_block_until": algae_block_until, "fish": fish, "eggs": eggs,
 		"algae": Marshalls.raw_to_base64(algae), "stats": stats, "discovered": discovered,
 		"daily": daily, "story_idx": story_idx, "next_id": next_id, "last_sim": last_sim,
@@ -321,6 +332,12 @@ func load_game() -> bool:
 	if int(d.get("v", 1)) < 2:
 		tank_tier += 1                     # la pecera redonda se añadió delante de la Nano
 	terrain = d.get("terrain", [])
+	floor_dirt = d.get("floor_dirt", [])
+	equip_inv = d.get("equip_inv", {})
+	for k in equip_inv:
+		equip_inv[k] = int(equip_inv[k])
+	o2_until = float(d.get("o2_until", 0.0))
+	show_names = bool(d.get("show_names", false))
 	equipment = {"filter": "", "heater": "", "pump": "", "light": "", "thermo": "", "ato": ""}
 	equipment.merge(d.equipment, true)
 	equip_cond = d.get("equip_cond", {})
@@ -399,6 +416,7 @@ func _catch_up(gap: float) -> void:
 		pending_algae += step
 		if pending_algae >= 3600.0 or remaining <= 0.0:
 			_grow_algae(pending_algae)          # las algas cuestan más: por horas
+			_grow_floor(pending_algae)
 			pending_algae = 0.0
 			_refresh_water()
 		_sim(step, t)
@@ -421,13 +439,14 @@ func _sim(dt: float, now: float) -> void:
 	var w: Dictionary = _cache
 	_evaporate(dt)
 	var death: bool = mk("death")
-	var floor_hp := 0.0 if death else (25.0 if _offline_floor else 5.0)
+	# Estando fuera nadie muere (en Realista vuelven muy débiles); jugando, en Realista sí pueden morir.
+	var floor_hp := (10.0 if death else 25.0) if _offline_floor else (0.0 if death else 5.0)
 	var dead: Array = []
 	for f in fish:
 		var problems := fish_problems(f).size()
 		f.hunger = minf(100.0, f.hunger + HUNGER_PER_MIN * float(mk("hunger")) * m)
 		f.problems = problems
-		var hp_delta := 0.6 if problems == 0 else -0.3 * problems * (1.5 if death else 1.0)
+		var hp_delta := 0.15 if problems == 0 else -0.04 * problems * (1.5 if death else 1.0)
 		f.health = clampf(f.health + hp_delta * m, minf(floor_hp, f.health), 100.0)
 		if death and f.health <= 0.0:
 			dead.append(f)
@@ -470,10 +489,30 @@ func fish_problems(f: Dictionary) -> Array:
 	if water_temp < s.temp[0] - 0.5 * tol or water_temp > s.temp[1] + 0.5 * tol: out.append("Temperatura")
 	if w.ph < s.ph[0] - 0.2 * tol or w.ph > s.ph[1] + 0.2 * tol: out.append("pH")
 	if w.o2 < (60.0 if mode == "realista" else 55.0): out.append("Oxígeno")
-	if w.dirt > (60.0 if mode == "realista" else 70.0): out.append("Suciedad")
+	if maxf(w.dirt, w.waste) > (60.0 if mode == "realista" else 70.0): out.append("Suciedad")
 	if s.water == "salada" and (salinity < Catalog.SALINITY[0] - 0.001 * tol or salinity > Catalog.SALINITY[1] + 0.001 * tol):
 		out.append("Salinidad")
 	return out
+
+
+## Qué hacer con cada molestia (se enseña en la ficha del pez).
+func problem_fix(f: Dictionary, p: String) -> String:
+	var s: Dictionary = Catalog.SPECIES[f.genes.sp]
+	var w: Dictionary = _cache
+	match p:
+		"Hambre": return "Hambre: coge el bote de comida (%s)." % diet_text(f.genes.sp).to_lower()
+		"Temperatura":
+			if water_temp < s.temp[0]:
+				return "Frío: instala o mejora el calentador."
+			return "Calor: baja el termostato o retira el calentador."
+		"pH": return "pH bajo: echa pH+ (bote de Agua)." if w.ph < s.ph[0] else "pH alto: echa pH− (bote de Agua)."
+		"Oxígeno": return "Oxígeno: pastillas de oxígeno, un aireador o menos peces."
+		"Suciedad": return "Suciedad: limpia el cristal y aspira el fondo con el sifón."
+		"Salinidad":
+			if salinity > Catalog.SALINITY[1]:
+				return "Salinidad alta: repón agua dulce (bote de Agua)."
+			return "Salinidad baja: añade sal marina (bote de Agua)."
+	return p
 
 
 ## En agua salada se evapora agua dulce y la sal se concentra (salvo con reposición automática).
@@ -482,15 +521,15 @@ func _evaporate(dt: float) -> void:
 		return
 	if equipment.ato != "" and efficiency("ato") > 0.5:
 		return
-	salinity = minf(1.035, salinity + 0.0004 * float(mk("evap")) * dt / 3600.0)
+	salinity = minf(1.035, salinity + 0.00004 * float(mk("evap")) * dt / 3600.0)   # ~1 milésima al día
 
 
 func _grow_algae(dt: float) -> void:
 	var w: Dictionary = _cache
 	if float(mk("algae")) <= 0.0:
 		return
-	# Lento a propósito: sin filtro, 2-3 peces tardan ~7 h en cubrir el cristal.
-	var per_min: float = (0.07 + 0.12 * w.load) * (1.0 - w.filter) * (1.0 - w.plant_clean) * float(mk("algae"))
+	# Lento a propósito: sin filtro, 2-3 peces ensucian ~1/6 del cristal al día.
+	var per_min: float = (0.004 + 0.004 * w.load) * (1.0 - w.filter) * (1.0 - w.plant_clean) * float(mk("algae"))
 	if Time.get_unix_time_from_system() < algae_block_until:
 		per_min *= 0.5
 	var add := per_min * dt / 60.0 * 2.55          # bytes por celda (peso medio 1)
@@ -503,6 +542,59 @@ func _grow_algae(dt: float) -> void:
 		var n := int(v) + (1 if rng.randf() < v - floorf(v) else 0)
 		algae[i] = mini(255, algae[i] + n)
 	algae_changed.emit()
+
+
+## El fondo se va ensuciando (restos, excrementos): ~1/4 al día con 2-3 peces. El filtro lo frena a la mitad.
+func _grow_floor(dt: float) -> void:
+	var mult := float(mk("waste"))
+	if mult <= 0.0:
+		return
+	_ensure_floor()
+	var w: Dictionary = _cache
+	var add := (0.00004 + 0.00006 * float(w.get("load", 1.0))) * (1.0 - float(w.get("filter", 0.0)) * 0.5) * mult * dt / 60.0
+	for i in floor_dirt.size():
+		floor_dirt[i] = minf(1.0, float(floor_dirt[i]) + add * (0.6 + 0.8 * fposmod(sin(i * 12.9898) * 43758.5453, 1.0)))
+	floor_changed.emit()
+
+
+func _ensure_floor() -> void:
+	if floor_dirt.size() != Catalog.FLOOR_N:
+		floor_dirt = []
+		floor_dirt.resize(Catalog.FLOOR_N)
+		floor_dirt.fill(0.0)
+
+
+func floor_level() -> float:
+	if floor_dirt.is_empty():
+		return 0.0
+	var t := 0.0
+	for v in floor_dirt:
+		t += float(v)
+	return t / floor_dirt.size()
+
+
+## Sifón: aspira la suciedad del fondo alrededor de u (0..1). Devuelve lo aspirado.
+func vacuum_at(u: float) -> float:
+	_ensure_floor()
+	var c := u * Catalog.FLOOR_N - 0.5
+	var got := 0.0
+	for i in range(maxi(0, int(c - 2)), mini(Catalog.FLOOR_N, int(c + 3))):
+		var k := 1.0 - absf(i - c) / 2.0
+		if k <= 0.0:
+			continue
+		var take := minf(float(floor_dirt[i]), 0.05 * k)
+		floor_dirt[i] = float(floor_dirt[i]) - take
+		got += take
+	if got <= 0.0:
+		return 0.0
+	stats.vac_acc = float(stats.get("vac_acc", 0.0)) + got
+	if stats.vac_acc >= 0.25:
+		stats.vac_acc -= 0.25
+		_bump("vacuumed", 1)
+		add_xp(1)
+	floor_changed.emit()
+	_dirty = true
+	return got
 
 
 func _build_weights() -> void:
@@ -530,9 +622,11 @@ func _build_weights() -> void:
 				_round_cells += 1
 
 
-## Proporciones de la pecera redonda (alto = 0,92 × ancho): centro y radio vertical en uv.
-const BOWL_H := 0.92
-const BOWL_CY := (BOWL_H - 0.5) / BOWL_H
+## Pecera redonda con base plana: alto = 0,87 × ancho; el centro del círculo está 0,449 × ancho
+## por encima del fondo (así la base plana mide 0,44 del ancho). Centro y radio vertical en uv.
+const BOWL_H := 0.87
+const BOWL_DROP := 0.449
+const BOWL_CY := (BOWL_H - BOWL_DROP) / BOWL_H
 const BOWL_RY := 0.5 / BOWL_H
 
 
@@ -572,13 +666,15 @@ func _refresh_water() -> void:
 	var load := 0.0
 	for f in fish:
 		load += Catalog.SPECIES[f.genes.sp].load * f.genes.size * (0.4 + 0.6 * f.grow)
-	var cap: float = tank.o2 + plants * 0.6
+	var cap: float = tank.o2 + plants * 0.6 + (2.5 if Time.get_unix_time_from_system() < o2_until else 0.0)
 	if equipment.pump != "":
 		cap += Catalog.EQUIPMENT[equipment.pump].o2 * efficiency("pump")
 	var o2 := 100.0 - maxf(0.0, load - cap) / cap * 120.0 - maxf(0.0, water_temp - 27.0) * 3.0
+	var waste := floor_level() * 100.0
 	_cache = {
 		"dirt": dirt,
-		"ph": clampf((8.25 if water_kind == "salada" else 7.6) - dirt * 0.014 * (1.4 if mode == "realista" else 1.0) + ph_fx
+		"waste": waste,
+		"ph": clampf((8.25 if water_kind == "salada" else 7.6) - dirt * 0.014 * (1.4 if mode == "realista" else 1.0) - waste * 0.005 + ph_fx
 			- (0.15 if substrate == "tierra" else 0.0) + ph_adjust, 5.6, 8.6),
 		"o2": clampf(o2, 10.0, 100.0),
 		"load": load,
@@ -908,12 +1004,17 @@ func fish_ate(id: int, food_id: String) -> void:
 	_dirty = true
 
 
-## Comida que nadie se comió: ensucia un poco.
-func food_rotted() -> void:
+## Comida que nadie se comió: ensucia un poco el cristal y, sobre todo, el fondo donde cayó (u 0..1).
+func food_rotted(u := -1.0) -> void:
 	var wts := algae_weights()
 	for i in algae.size():
 		algae[i] = mini(255, algae[i] + int(1.6 * wts[i]))
 	algae_changed.emit()
+	if u >= 0.0 and float(mk("waste")) > 0.0:
+		_ensure_floor()
+		var c := clampi(int(u * Catalog.FLOOR_N), 0, Catalog.FLOOR_N - 1)
+		floor_dirt[c] = minf(1.0, float(floor_dirt[c]) + 0.04)
+		floor_changed.emit()
 
 
 ## Una pulsación de "dar de comer". Devuelve false si no queda de ese tipo.
@@ -1053,11 +1154,57 @@ func buy_equipment(id: String) -> void:
 		return
 	if equipment[e.slot] == id or not spend(e.price, "coins"):
 		return
-	equipment[e.slot] = id
-	equip_cond[e.slot] = 100.0
+	_install(id, 100.0)
+	_bought("%s instalado" % e.name, "gear")
+
+
+## Coloca un aparato; el que hubiera en ese hueco se guarda en el almacén.
+func _install(id: String, cond: float) -> void:
+	var slot: String = Catalog.EQUIPMENT[id].slot
+	if equipment[slot] != "":
+		equip_inv[equipment[slot]] = int(equip_inv.get(equipment[slot], 0)) + 1
+	equipment[slot] = id
+	equip_cond[slot] = cond
 	_refresh_water()
 	tank_changed.emit()
-	_bought("%s instalado" % e.name, "gear")
+	changed.emit()
+	_dirty = true
+
+
+## Quita un aparato de la pecera y lo guarda para volver a ponerlo cuando quieras.
+func remove_equipment(slot: String) -> void:
+	var id: String = equipment.get(slot, "")
+	if id == "":
+		return
+	equip_inv[id] = int(equip_inv.get(id, 0)) + 1
+	equipment[slot] = ""
+	equip_cond.erase(slot)
+	equip_pos.erase(slot)
+	_refresh_water()
+	tank_changed.emit()
+	changed.emit()
+	_dirty = true
+	toast.emit("%s retirado y guardado" % Catalog.EQUIPMENT[id].name, "gear")
+
+
+func install_stored(id: String) -> void:
+	if int(equip_inv.get(id, 0)) <= 0 or install_block(id) != "" or not Catalog.fits(Catalog.EQUIPMENT[id], water_kind):
+		return
+	equip_inv[id] = int(equip_inv[id]) - 1
+	if equip_inv[id] == 0:
+		equip_inv.erase(id)
+	_install(id, 100.0)
+	toast.emit("%s instalado" % Catalog.EQUIPMENT[id].name, "gear")
+
+
+func rename_fish(id: int, new_name: String) -> void:
+	var f := get_fish(id)
+	new_name = new_name.strip_edges().left(16)
+	if f.is_empty() or new_name == "":
+		return
+	f.name = new_name
+	_dirty = true
+	changed.emit()
 
 
 ## Compra al inventario y, si hay hueco, la coloca directamente.
@@ -1106,6 +1253,8 @@ func use_product(id: String) -> bool:
 	match id:
 		"ph_up": ph_adjust = minf(ph_adjust + 0.3, 1.2)
 		"ph_down": ph_adjust = maxf(ph_adjust - 0.3, -1.2)
+		"oxigeno": o2_until = Time.get_unix_time_from_system() + 12.0 * 3600.0
+		"sal": salinity = minf(1.035, salinity + 0.002)
 		"antialgas":
 			for i in algae.size():
 				algae[i] = int(algae[i] * 0.6)
@@ -1213,6 +1362,7 @@ func story_progress() -> int:
 					return 1
 			return 0
 		"maint": return int(stats.get("maint", 0))
+		"vacuumed": return int(stats.get("vacuumed", 0))
 	return 0
 
 

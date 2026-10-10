@@ -18,6 +18,16 @@ static func substrate(id: String, h := 140.0) -> Control:
 	return c
 
 
+## Dibujo de la tienda (ShopArt): kind = equipment / tank / food / product.
+static func art(kind: String, id: Variant, h := 140.0) -> Control:
+	var c := ArtThumb.new()
+	c.kind = kind
+	c.id = id
+	c.custom_minimum_size = Vector2(0, h)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
+
+
 static func icon(kind: String, h := 140.0, px := 96.0) -> Control:
 	var c := CenterContainer.new()
 	c.custom_minimum_size = Vector2(0, h)
@@ -65,3 +75,16 @@ class SubThumb extends Control:
 			var c := Catalog.color(cols[rng.randi() % 3])
 			draw_circle(p, big * rng.randf_range(0.7, 1.1), c.darkened(0.2))
 			draw_circle(p + Vector2(-1, -1) * big * 0.2, big * rng.randf_range(0.5, 0.8), c)
+
+
+class ArtThumb extends Control:
+	var kind := ""
+	var id: Variant
+
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		match kind:
+			"equipment": ShopArt.equipment(self, id, r)
+			"tank": ShopArt.tank(self, id, r)
+			"food": ShopArt.food(self, id, r)
+			"product": ShopArt.product(self, id, r)

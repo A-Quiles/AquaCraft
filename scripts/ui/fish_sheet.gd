@@ -98,9 +98,14 @@ func _show_detail(id: int) -> void:
 	var back := UI.button("‹ Mis peces", UI.SAND, Color("e2d3bd"))
 	back.add_theme_color_override("font_color", UI.NAVY)
 	back.add_theme_color_override("font_hover_color", UI.NAVY)
-	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	back.pressed.connect(_show_list)
-	body.add_child(back)
+	var top := UI.hbox(10)
+	top.add_child(back)
+	top.add_child(UI.spacer())
+	var ren := UI.button("Cambiar nombre", UI.LAV, UI.LAV_D)
+	ren.pressed.connect(_rename.bind(id))
+	top.add_child(ren)
+	body.add_child(top)
 	var v := scroll_area()
 	var aq := PanelContainer.new()
 	var st := UI.box(Color("0f5a73"), 26)
@@ -135,8 +140,8 @@ func _show_detail(id: int) -> void:
 	if f.grow < 1.0:
 		sv.add_child(UI.label("Creciendo: %d%%  (los gránulos aceleran)" % int(f.grow * 100.0), 21, UI.MUTED, UI.bold))
 	var probs := Game.fish_problems(f)
-	if not probs.is_empty():
-		sv.add_child(UI.wrap(UI.label("Le molesta: %s" % ", ".join(probs).to_lower(), 21, UI.BAD, UI.bold)))
+	for p in probs:
+		sv.add_child(UI.wrap(UI.label("• " + Game.problem_fix(f, p), 21, UI.BAD, UI.bold)))
 	var s: Dictionary = Catalog.SPECIES[f.genes.sp]
 	sv.add_child(UI.wrap(UI.label(Game.diet_text(f.genes.sp) + ".", 20, UI.NAVY, UI.bold)))
 	sv.add_child(UI.wrap(UI.label("Le gusta: %d–%d °C · pH %.1f–%.1f%s" % [s.temp[0], s.temp[1], s.ph[0], s.ph[1],
@@ -228,3 +233,32 @@ func _eggs() -> void:
 		h.add_child(b)
 		c.add_child(h)
 		_list.add_child(c)
+
+
+## Ventana para ponerle un nombre propio al pez.
+func _rename(id: int) -> void:
+	var f := Game.get_fish(id)
+	var m := Modal.new()
+	m.centered(UI.title("Nombre", 38))
+	var line := LineEdit.new()
+	line.text = f.name
+	line.max_length = 16
+	line.select_all_on_focus = true
+	line.custom_minimum_size = Vector2(440, 70)
+	line.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line.add_theme_font_override("font", UI.heading)
+	line.add_theme_font_size_override("font_size", 32)
+	line.add_theme_color_override("font_color", UI.NAVY)
+	for st in ["normal", "focus"]:
+		line.add_theme_stylebox_override(st, UI.box(Color.WHITE, 18, 3, UI.TEAL))
+	m.centered(line)
+	var ok := UI.button("Guardar", UI.CORAL, UI.CORAL_D)
+	var save := func(_t := ""):
+		Game.rename_fish(id, line.text)
+		m.close()
+		_show_detail(id)
+	ok.pressed.connect(save)
+	line.text_submitted.connect(save)
+	m.box.add_child(ok)
+	get_parent()._show_modal(m)
+	line.grab_focus.call_deferred()

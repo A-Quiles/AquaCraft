@@ -55,7 +55,7 @@ func eat(f: Flake) -> void:
 func _process(dt: float) -> void:
 	if flakes.is_empty():
 		return
-	var rotted := 0
+	var rotted: Array[float] = []
 	for i in range(flakes.size() - 1, -1, -1):
 		var f := flakes[i]
 		f.age += dt
@@ -71,9 +71,9 @@ func _process(dt: float) -> void:
 				f.landed = f.age
 		elif f.age - f.landed > ROT_TIME:
 			flakes.remove_at(i)
-			rotted += 1
-	for i in rotted:
-		Game.food_rotted()
+			rotted.append(f.pos.x / tank.size.x)
+	for u in rotted:
+		Game.food_rotted(u)
 	queue_redraw()
 
 

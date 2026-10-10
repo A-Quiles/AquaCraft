@@ -34,22 +34,27 @@ func _init() -> void:
 	var rare := {"genes": Genetics.random_genes("betta", rng, 3), "grow": 1.0, "health": 100.0}
 	check(Genetics.value(rare) > Genetics.value(common) * 10, "precio escala con rareza y edad")
 
-	# Simulación: partida nueva, 8 h fuera, sin muertes y con hambre.
+	# Simulación: partida nueva, 2 días fuera (el máximo), sin muertes, con hambre y algo de algas.
 	var game: Node = load("res://scripts/game.gd").new()
 	game._build_weights()
 	game.new_game()
 	game._refresh_water()
 	check(game.fish.size() == 3, "partida nueva con 3 peces")
 	check(game.is_round() and game.equipment.values().all(func(v): return v == ""), "se empieza en la pecera redonda y sin aparatos")
-	game.last_sim -= 8 * 3600.0
+	game.last_sim -= 48 * 3600.0
 	var t0 := Time.get_ticks_msec()
-	game._catch_up(8 * 3600.0)
+	game._catch_up(48 * 3600.0)
 	var ms := Time.get_ticks_msec() - t0
-	check(ms < 1500, "8 h offline en %d ms" % ms)
+	check(ms < 3000, "48 h offline en %d ms" % ms)
 	for f in game.fish:
-		check(f.hunger > 90.0, "tras 8 h tienen hambre (%.0f)" % f.hunger)
+		check(f.hunger > 90.0, "tras 2 días tienen hambre (%.0f)" % f.hunger)
 		check(f.health >= 25.0, "nadie baja del 25%% offline (%.0f)" % f.health)
-	check(game.water().dirt > 30.0 and game.water().dirt < 97.0, "las algas crecen poco a poco offline (%.0f%%)" % game.water().dirt)
+	check(game.water().dirt > 30.0 and game.water().dirt < 80.0, "las algas crecen poco a poco offline (%.0f%%)" % game.water().dirt)
+	check(game.water().waste > 10.0 and game.water().waste < 80.0, "el fondo se ensucia poco a poco (%.0f%%)" % game.water().waste)
+	var w0: float = game.floor_level()
+	for i in 120:
+		game.vacuum_at((i % 40) / 40.0)      # tres pasadas de sifón
+	check(game.floor_level() < w0 * 0.3, "el sifón limpia el fondo")
 
 	# Limpiar y alimentar.
 	var before: float = game.water().dirt
@@ -82,12 +87,18 @@ func _init() -> void:
 	check(game.install_block("difusor") != "", "la pecera redonda no tiene hueco para aireador")
 	game.buy_equipment("filtro_mini")
 	check(game.equipment.filter == "filtro_mini", "filtro básico instalado")
-	game._wear(200 * 3600.0)
+	game._wear(48 * 3600.0)
+	check(game.equipment.filter == "filtro_mini", "un filtro básico aguanta dos días sin mantenimiento")
+	game._wear(400 * 3600.0)
 	check(game.equipment.filter == "", "un aparato básico abandonado se rompe")
 	var wts: PackedFloat32Array = game.algae_weights()
 	check(wts[0] == 0.0 and wts[wts.size() / 2 + 20] > 0.0, "en la pecera redonda no crecen algas fuera del cristal")
 	game.buy_equipment("esponja")
 	check(game.equipment.filter == "esponja", "filtro instalado")
+	game.remove_equipment("filter")
+	check(game.equipment.filter == "" and game.equip_inv.get("esponja", 0) == 1, "retirar guarda el aparato")
+	game.install_stored("esponja")
+	check(game.equipment.filter == "esponja" and game.equip_inv.is_empty(), "volver a instalar lo guardado")
 	game.buy_tank(2)
 	check(game.tank_tier == 2 and game.capacity() == 10 and not game.is_round(), "pecera ampliada")
 	game.buy_equipment("canister")
@@ -103,7 +114,7 @@ func _init() -> void:
 
 	# Mantenimiento: el filtro se desgasta con el tiempo y rinde menos.
 	game.equip_cond.filter = 100.0
-	game._wear(100 * 3600.0)
+	game._wear(400 * 3600.0)
 	check(game.condition("filter") < 30.0 and game.equipment.filter == "canister", "el filtro pro se ensucia pero no se rompe (%.0f%%)" % game.condition("filter"))
 	check(game.efficiency("filter") < 0.5, "filtro sucio rinde menos")
 	check(game.needs_maintenance().has("filter"), "aviso de mantenimiento")
@@ -118,10 +129,20 @@ func _init() -> void:
 	game._refresh_water()
 	check(game.fish.all(func(f): return Catalog.SPECIES[f.genes.sp].water == "salada"), "partida marina con peces marinos")
 	check(game.substrate == "aragonita" and game.water().ph > 7.9, "sustrato y pH marinos")
-	game._evaporate(12 * 3600.0)
+	game._evaporate(96 * 3600.0)
 	check(game.fish_problems(game.fish[0]).has("Salinidad"), "la evaporación sube la salinidad (%.4f)" % game.salinity)
 	game.top_up()
-	check(not game.fish_problems(game.fish[0]).has("Salinidad"), "reponer agua corrige la salinidad")
+	game.top_up()
+	check(not game.fish_problems(game.fish[0]).has("Salinidad"), "reponer agua corrige la salinidad (%.4f)" % game.salinity)
+	for i in 4:
+		game.top_up()
+	check(game.fish_problems(game.fish[0]).has("Salinidad"), "pasarse reponiendo baja demasiado la salinidad")
+	game.products.sal = 5
+	for i in 3:
+		game.use_product("sal")
+	check(not game.fish_problems(game.fish[0]).has("Salinidad"), "la sal marina la vuelve a subir (%.4f)" % game.salinity)
+	for prob in ["Hambre", "Temperatura", "pH", "Oxígeno", "Suciedad", "Salinidad"]:
+		check(game.problem_fix(game.fish[0], prob) != prob, "hay remedio para %s" % prob)
 	game.buy_fish("guppy")
 	check(not game.fish.any(func(f): return f.genes.sp == "guppy"), "no se venden peces de agua dulce en un marino")
 	check(not game.convert_water(), "no se convierte con peces dentro")
@@ -157,7 +178,12 @@ func _init() -> void:
 	var victim: Dictionary = game.fish[0]
 	victim.health = 1.0
 	victim.hunger = 100.0
-	game._sim(600.0, Time.get_unix_time_from_system())
+	game._offline_floor = true
+	game._sim(3600.0, Time.get_unix_time_from_system())
+	game._offline_floor = false
+	check(game.fish.has(victim), "Realista: estando fuera nadie muere")
+	victim.health = 1.0
+	game._sim(3600.0, Time.get_unix_time_from_system())
 	check(not game.fish.has(victim), "Realista: un pez sin cuidados muere")
 	game.free()
 

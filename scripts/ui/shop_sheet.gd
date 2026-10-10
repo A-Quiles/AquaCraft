@@ -141,7 +141,7 @@ func _tank_tab() -> void:
 			act = _state("Superada")
 		else:
 			act = _price(t.price, "coins", t.level, Game.buy_tank.bind(i))
-		_card(g, Previews.icon("tank", 140, 70 + i * 14), t.name, desc, act)
+		_card(g, Previews.art("tank", i), t.name, desc, act)
 	var other := "salada" if Game.water_kind == "dulce" else "dulce"
 	_section("Tipo de agua", Catalog.WATER_NAMES[Game.water_kind])
 	var g2 := _grid()
@@ -150,7 +150,6 @@ func _tank_tab() -> void:
 
 
 func _equip_tab() -> void:
-	var icons := {"filter": "sparkle", "heater": "thermo", "pump": "o2", "light": "star", "thermo": "thermo", "ato": "ph"}
 	var t: Dictionary = Catalog.TANKS[Game.tank_tier]
 	var note := UI.wrap(UI.label("Tu %s admite equipo %s. Lo básico es barato pero se gasta antes, rinde menos y se rompe si lo descuidas." % [
 		t.name, "solo básico" if t.max_q == 1 else ("hasta estándar" if t.max_q == 2 else "de cualquier calidad")], 21, UI.MUTED, UI.bold))
@@ -164,17 +163,23 @@ func _equip_tab() -> void:
 				continue
 			var cur: String = Game.equipment[slot]
 			var why := Game.install_block(id)
+			var stored := int(Game.equip_inv.get(id, 0))
 			var act: Control
 			if cur == id:
 				act = _state("Instalado · %d%%" % roundi(Game.condition(slot)) if e.wear > 0.0 else "Instalado")
 			elif why != "":
 				act = _state(why)
+			elif stored > 0:
+				act = UI.button("Instalar (guardado)")
+				act.custom_minimum_size.y = 62
+				act.add_theme_font_size_override("font_size", 21)
+				act.pressed.connect(_after.bind(Game.install_stored.bind(id)))
 			elif cur != "" and int(Catalog.EQUIPMENT[cur].q) > int(e.q):
 				act = _state("Tienes uno mejor")
 			else:
 				act = _price(e.price, "coins", e.level, Game.buy_equipment.bind(id))
 			var desc: String = e.desc + ("\nMantenimiento: %s" % e.maint.to_lower() if e.wear > 0.0 else "")
-			_card(g, Previews.icon(icons[slot]), e.name, desc, act, UI.pill(Catalog.QUALITY_NAMES[e.q], Catalog.color(Catalog.QUALITY_COLORS[e.q])))
+			_card(g, Previews.art("equipment", id), e.name, desc, act, UI.pill(Catalog.QUALITY_NAMES[e.q], Catalog.color(Catalog.QUALITY_COLORS[e.q])))
 
 
 func _decor_tab() -> void:
@@ -238,14 +243,12 @@ func _food_tab() -> void:
 			act = _price(f.price, "coins", f.level, Game.buy_food.bind(id))
 		var have := "∞" if f.price == 0 else str(Game.food.get(id, 0))
 		var desc := "%s\nTienes: %s%s" % [f.desc, have, (" · pack de %d" % f.pack) if f.pack > 0 else ""]
-		var prev := Previews.icon("food")
-		prev.modulate = Catalog.color(f.col).lightened(0.4)
-		_card(g, prev, f.name, desc, act)
-	_section("Productos para el agua", "se usan desde la estantería")
+		_card(g, Previews.art("food", id), f.name, desc, act)
+	_section("Productos para el agua", "en el bote «Agua» de la estantería")
 	var g2 := _grid()
 	for id in Catalog.PRODUCT_ORDER:
 		var pr: Dictionary = Catalog.PRODUCTS[id]
-		var prev := Previews.icon("ph" if id != "antialgas" else "sparkle")
-		prev.modulate = Catalog.color(pr.col).lightened(0.3)
+		if not Catalog.fits(pr, Game.water_kind):
+			continue
 		var desc := "%s\nTienes: %d · pack de %d" % [pr.desc, Game.products.get(id, 0), pr.pack]
-		_card(g2, prev, pr.name, desc, _price(pr.price, "coins", pr.level, Game.buy_product.bind(id)))
+		_card(g2, Previews.art("product", id), pr.name, desc, _price(pr.price, "coins", pr.level, Game.buy_product.bind(id)))

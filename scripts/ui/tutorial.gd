@@ -5,13 +5,14 @@ extends Control
 
 const STEPS := [
 	{"text": "¡Hola! Te enseño lo básico en un minuto: alimentar, limpiar, mantener el equipo, criar y decorar.", "wait": "button", "button": "¡Vamos!"},
-	{"text": "Tus peces tienen hambre: el bocadillo dice qué comida quieren. Coge el bote de escamas de la estantería.", "target": "prop:food:escamas", "wait": "mode_feed"},
+	{"text": "Tus peces tienen hambre: el bocadillo dice qué comida quieren. Toca el bote «Comida» de la estantería y coge escamas.", "target": "prop:food", "wait": "mode_feed"},
 	{"text": "Toca el agua para echar escamas. Ojo: algunos peces solo comen un alimento, y lo que sobra se pudre y ensucia.", "target": "tank", "wait": "fed"},
 	{"text": "Con el tiempo salen algas en el cristal, poco a poco. Coge el limpiacristales de la estantería…", "target": "prop:sponge", "wait": "mode_clean", "care": true},
 	{"text": "…y frota el cristal con el dedo hasta que brille.", "target": "tank", "wait": "cleaned", "care": true},
+	{"text": "El fondo también se ensucia despacio con restos de comida. Con el «Sifón» de la estantería lo aspiras pasándolo por la arena.", "wait": "button", "button": "Entendido", "care": true},
 	{"text": "Tu pecera redonda no trae aparatos. Abre la Tienda → Equipo y compra un filtro básico: es barato, pero se gasta antes.", "target": "bar:shop", "wait": "filter", "care": true, "free_sheet": true},
 	{"text": "Cada aparato se desgasta: cuando veas un aviso «!», tócalo y mantén pulsado para limpiarlo. Los básicos se rompen si llegan a 0%.", "wait": "button", "button": "Entendido", "care": true},
-	{"text": "En la estantería también tienes reguladores de pH y antialgas. Ahora, para criar, abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
+	{"text": "Si un pez tiene molestias, su ficha te dice qué hacer; el bote «Agua» trae pH+, pH−, oxígeno y antialgas. Ahora, para criar, abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
 	{"text": "Dos adultos de la misma especie, sanos y felices, ponen un huevo. Las crías heredan colores, patrón y mutaciones: ¡los raros valen mucho más!", "wait": "button", "button": "Entendido"},
 	{"text": "Por último, pulsa «Decorar»: arrastra plantas, adornos y aparatos donde quieras, o moldea la arena para hacer montañas.","target": "bar:edit", "wait": "mode_edit"},
 	{"text": "¡Listo! Las misiones te irán guiando. Disfruta de tu acuario.", "wait": "button", "button": "¡A bucear!"},
@@ -128,9 +129,12 @@ func _process(_dt: float) -> void:
 	_card.position = Vector2((vp.x - _card.size.x) * 0.5, y + Hud.safe_margins().x)
 	# Si el jugador está usando una ventana (p. ej. el mantenimiento), le dejamos hacerlo.
 	_modal_open = hud._modal != null and is_instance_valid(hud._modal) and not hud._modal.closing
-	# Pasos de compra: con la tienda abierta se deja usarla entera.
-	if s.get("free_sheet", false) and hud._sheet != null and is_instance_valid(hud._sheet) and not hud._sheet.closing:
-		_modal_open = true
+	# Con una hoja abierta (tienda, peces) el aviso baja al pie para no tapar sus pestañas;
+	# en los pasos de compra además se deja usar la tienda entera.
+	var sheet_open: bool = hud._sheet != null and is_instance_valid(hud._sheet) and not hud._sheet.closing
+	if sheet_open:
+		_card.position.y = vp.y - _card.size.y - 24.0 - Hud.safe_margins().y
+		_modal_open = _modal_open or s.get("free_sheet", false)
 	var rects: Array = [Rect2(Vector2.ZERO, vp), Rect2(), Rect2(), Rect2()]
 	if _modal_open:
 		rects[0] = Rect2()

@@ -206,15 +206,15 @@ const QUALITY_NAMES := ["", "Básico", "Estándar", "Pro"]
 const QUALITY_COLORS := ["", "9aa7b5", "3fa3ff", "b36bff"]
 const SLOT_NAMES := {"filter": "Filtro", "heater": "Calentador", "pump": "Aireador", "light": "Iluminación", "thermo": "Termómetro", "ato": "Reposición"}
 
-## Modos de juego. algae/wear/hunger/evap: multiplicadores · tol: margen sobre los rangos ideales
+## Modos de juego. algae/waste/wear/hunger/evap: multiplicadores · tol: margen sobre los rangos ideales
 ## (99 = da igual) · death: los peces pueden morir · room_var: la habitación se enfría de noche.
 const MODES := {
 	"basico": {"name": "Relax", "desc": "Sin algas, sin desgaste y sin parámetros del agua. Solo dales de comer, cría y decora.",
-		"algae": 0.0, "wear": 0.0, "hunger": 0.6, "evap": 0.0, "tol": 99.0, "death": false, "room_var": false, "hunger_hurts": false},
+		"algae": 0.0, "waste": 0.0, "wear": 0.0, "hunger": 0.6, "evap": 0.0, "tol": 99.0, "death": false, "room_var": false, "hunger_hurts": false},
 	"normal": {"name": "Normal", "desc": "Cuidados sencillos: limpia, mantén el equipo y vigila temperatura y pH. Los peces no mueren.",
-		"algae": 1.0, "wear": 1.0, "hunger": 1.0, "evap": 1.0, "tol": 1.0, "death": false, "room_var": false, "hunger_hurts": true},
+		"algae": 1.0, "waste": 1.0, "wear": 0.3, "hunger": 1.0, "evap": 1.0, "tol": 1.0, "death": false, "room_var": false, "hunger_hurts": true},
 	"realista": {"name": "Realista", "desc": "Acuariofilia de verdad: márgenes estrictos, la habitación se enfría de noche, el equipo se gasta antes y los peces pueden morir.",
-		"algae": 1.5, "wear": 1.6, "hunger": 1.25, "evap": 2.0, "tol": 0.0, "death": true, "room_var": true, "hunger_hurts": true},
+		"algae": 1.5, "waste": 1.5, "wear": 0.5, "hunger": 1.25, "evap": 2.0, "tol": 0.0, "death": true, "room_var": true, "hunger_hurts": true},
 }
 const MODE_ORDER := ["basico", "normal", "realista"]
 const SALINITY := [1.020, 1.026]     ## rango cómodo de las especies marinas
@@ -274,15 +274,18 @@ const FOOD_ORDER := ["escamas", "granulos", "artemia", "nori"]
 const PRODUCTS := {
 	"ph_up": {"name": "Regulador pH+", "short": "pH+", "price": 80, "pack": 5, "level": 1, "col": "3f8cff", "desc": "Sube el pH unas 3 décimas. El efecto se va perdiendo en un día."},
 	"ph_down": {"name": "Regulador pH−", "short": "pH−", "price": 80, "pack": 5, "level": 1, "col": "ff7a3a", "desc": "Baja el pH unas 3 décimas. Ideal para tetras y discos."},
+	"oxigeno": {"name": "Pastillas de oxígeno", "short": "O₂", "price": 60, "pack": 4, "level": 1, "col": "45b8f0", "desc": "Liberan oxígeno durante 12 horas. Para peceras sin aireador."},
+	"sal": {"water": "salada", "name": "Sal marina", "short": "Sal", "price": 70, "pack": 5, "level": 1, "col": "c9d6e3", "desc": "Sube la salinidad 2 milésimas (si repusiste demasiada agua dulce)."},
 	"antialgas": {"name": "Antialgas", "short": "Alg", "price": 120, "pack": 4, "level": 2, "col": "3fbf6a", "desc": "Disuelve parte de las algas y frena su crecimiento 12 horas."},
 }
-const PRODUCT_ORDER := ["ph_up", "ph_down", "antialgas"]
+const PRODUCT_ORDER := ["ph_up", "ph_down", "oxigeno", "sal", "antialgas"]
 
 ## Misiones de historia: una activa cada vez, sirven de tutorial.
 ## type se evalúa en Game._story_progress()
 const STORY := [
 	{"text": "Da de comer a tus peces", "type": "feeds", "target": 1, "coins": 30, "pearls": 0, "xp": 15},
 	{"text": "Limpia las algas del cristal", "type": "cleaned", "target": 10, "coins": 40, "pearls": 0, "xp": 15},
+	{"text": "Aspira el fondo con el sifón", "type": "vacuumed", "target": 3, "coins": 40, "pearls": 0, "xp": 15},
 	{"text": "Instala un filtro", "type": "filter", "target": 1, "coins": 40, "pearls": 0, "xp": 20},
 	{"text": "Instala un calentador", "type": "heater", "target": 1, "coins": 0, "pearls": 2, "xp": 25},
 	{"text": "Haz el mantenimiento de un aparato", "type": "maint", "target": 1, "coins": 0, "pearls": 2, "xp": 20},
@@ -324,6 +327,7 @@ const NAMES := ["Burbuja", "Coral", "Perla", "Chispa", "Lola", "Rayo", "Canela",
 
 ## Altura del terreno: nº de puntos de control (el jugador los sube o baja en Decorar → Arena).
 const TERRAIN_N := 14
+const FLOOR_N := 24                   ## columnas de suciedad del fondo (se aspiran con el sifón)
 const TERRAIN_MIN := -0.05            ## fracción del alto de la pecera (cavar)
 const TERRAIN_MAX := 0.26             ## (montaña)
 

@@ -22,6 +22,7 @@ var overlay: TankOverlay
 var _water: ColorRect
 var _back: Node2D
 var _sub: ColorRect
+var _detritus: Node2D                ## suciedad del fondo (se aspira con el sifón)
 var _equip: Node2D
 var _mid: Node2D
 var _eggs: Node2D
@@ -47,6 +48,8 @@ func _ready() -> void:
 	_water = _rect(WATER)
 	_back = _node()
 	_sub = _rect(SUBSTRATE)
+	_detritus = _node()
+	_detritus.draw.connect(_draw_detritus)
 	_equip = _node()
 	_equip.draw.connect(_draw_equipment)
 	_mid = _node()
@@ -96,6 +99,7 @@ func _ready() -> void:
 	Game.fish_removed.connect(_on_fish_removed)
 	Game.eggs_changed.connect(_eggs.queue_redraw)
 	Game.algae_changed.connect(func(): _algae_dirty = true)
+	Game.floor_changed.connect(_detritus.queue_redraw)
 	Game.changed.connect(_refresh_water)
 	Game.changed.connect(_equip.queue_redraw)
 
@@ -118,7 +122,7 @@ func _node() -> Node2D:
 
 ## Pecera redonda: centro (position) y radio (size.x) en coordenadas locales.
 func bowl() -> Rect2:
-	return Rect2(Vector2(size.x * 0.5, size.y - size.x * 0.5), Vector2(size.x * 0.5, 0.0))
+	return Rect2(Vector2(size.x * 0.5, size.y - size.x * Game.BOWL_DROP), Vector2(size.x * 0.5, 0.0))
 
 
 ## Mantiene un punto (con medio tamaño `half`) dentro del agua: sobre la arena moldeada y,
@@ -174,6 +178,7 @@ func rebuild() -> void:
 	_build_pump()
 	_equip.queue_redraw()
 	_eggs.queue_redraw()
+	_detritus.queue_redraw()
 	for f in Game.fish:
 		if not actors.has(f.id):
 			_on_fish_added(f)
@@ -246,6 +251,7 @@ func terrain_changed() -> void:
 	_build_pump()
 	_equip.queue_redraw()
 	_eggs.queue_redraw()
+	_detritus.queue_redraw()
 
 
 func swim_rect(g: Dictionary) -> Rect2:
@@ -294,7 +300,19 @@ func startle(p: Vector2) -> void:
 			a.startle(p)
 
 
+## Sifón: aspira la suciedad del fondo si la campana está cerca de la arena.
+func vacuum_stroke(p: Vector2) -> void:
+	overlay.tool = "siphon"
+	overlay.sponge_pos = p
+	overlay.sponge_t = 0.6
+	if p.y > surface_y(p.x) - 80.0:
+		var got := Game.vacuum_at(p.x / size.x)
+		if got > 0.01 and randf() < 0.6:
+			overlay.burst(Vector2(p.x, surface_y(p.x) - 6.0), "dirt", 2)
+
+
 func clean_stroke(p: Vector2) -> void:
+	overlay.tool = "sponge"
 	overlay.sponge_pos = p
 	overlay.sponge_t = 0.6
 	var got := Game.clean_at(Vector2(p.x / size.x, p.y / size.y))
@@ -616,6 +634,39 @@ func _draw_top() -> void:
 			ci.draw_rect(r, Color(1, 1, 1, 0.9 if sel else 0.35), false, 3.0 if sel else 1.5)
 			if sel:
 				ci.draw_rect(r, Color(1, 1, 1, 0.08))
+
+
+## Restos sobre la arena (mulm): copos pardos que se amontonan. Posiciones fijas: no bailan.
+func _draw_detritus() -> void:
+	var n := Game.floor_dirt.size()
+	if n == 0:
+		return
+	var rng := RandomNumberGenerator.new()
+	for i in n:
+		var amount := float(Game.floor_dirt[i])
+		if amount <= 0.02:
+			continue
+		var x0 := float(i) / n * size.x
+		var cw := size.x / n
+		# Película parda sobre la superficie cuando ya está bastante sucio.
+		if amount > 0.3:
+			var pts := PackedVector2Array()
+			for k in 7:
+				var x := x0 + cw * k / 6.0
+				pts.append(Vector2(x, surface_y(x) - 2.0))
+			for k in range(6, -1, -1):
+				var x := x0 + cw * k / 6.0
+				pts.append(Vector2(x, surface_y(x) + 7.0))
+			_detritus.draw_colored_polygon(pts, Color(0.42, 0.33, 0.16, (amount - 0.3) * 0.75))
+		rng.seed = i * 7919 + 13
+		for k in 14:
+			var x := x0 + rng.randf() * cw
+			var y := surface_y(x) + rng.randf_range(-4.0, 3.0)
+			var r := rng.randf_range(2.2, 4.6)
+			if rng.randf() < amount * 1.1:
+				var col := Color(0.5, 0.4, 0.2, 0.92) if rng.randf() < 0.7 else Color(0.36, 0.42, 0.18, 0.9)
+				_detritus.draw_circle(Vector2(x, y), r, col.darkened(0.35))
+				_detritus.draw_circle(Vector2(x - r * 0.25, y - r * 0.3), r * 0.65, col)
 
 
 func _draw_eggs() -> void:
