@@ -1,8 +1,8 @@
 class_name ShopSheet
 extends Sheet
-## Mercado: peces (y exóticos del día), peceras, equipo, decoración/sustrato y comida.
+## Mercado: peces (y exóticos del día), peceras, equipo, decoración/sustrato, comida y estilo de la habitación.
 
-const TABS := ["Peces", "Peceras", "Equipo", "Decorar", "Cuidados"]
+const TABS := ["Peces", "Peceras", "Equipo", "Decorar", "Cuidados", "Estilo"]
 
 var tab := 0
 var _list: VBoxContainer
@@ -30,6 +30,7 @@ func _build() -> void:
 		2: _equip_tab()
 		3: _decor_tab()
 		4: _food_tab()
+		5: _style_tab()
 	if keep > 0:
 		(func(): _scroll.scroll_vertical = keep).call_deferred()
 
@@ -279,3 +280,52 @@ func _food_tab() -> void:
 			continue
 		var desc := "%s\nTienes: %d · pack de %d" % [pr.desc, Game.products.get(id, 0), pr.pack]
 		_card(g2, Previews.art("product", id), pr.name, desc, _price(pr.price, "coins", pr.level, Game.buy_product.bind(id)))
+
+
+func _style_tab() -> void:
+	_list.add_child(UI.wrap(UI.label("Cambia la pared, el mueble y el fondo de esta pecera. Lo que compras sirve para todas tus peceras.", 21, UI.MUTED, UI.bold)))
+	_section("Temas", "lo cambian todo a la vez")
+	var g := _grid()
+	for id in Catalog.THEME_ORDER:
+		var t: Dictionary = Catalog.THEMES[id]
+		var act: Control
+		if Game.theme_applied(id):
+			act = _state("En uso")
+		elif ("theme:" + id) in Game.owned_styles:
+			act = _use_button(Game.buy_theme.bind(id), "Aplicar")
+		else:
+			act = _price(Game.theme_price(id), t.cur, t.level, Game.buy_theme.bind(id))
+		var badge: Control = UI.pill("De temporada", UI.CORAL) if Game.theme_on_sale(id) else null
+		_card(g, Previews.style("theme", id), t.name, t.desc, act, badge)
+	for kind in ["wall", "stand", "backdrop"]:
+		_section(Catalog.STYLE_NAMES[kind])
+		var gk := _grid()
+		var items: Dictionary = Catalog.style_items(kind)
+		for id in items:
+			var d: Dictionary = items[id]
+			var owned := Game.owns_style(kind, id)
+			if d.has("theme") and not owned:
+				continue                     # las piezas de tema llegan con su tema
+			var act: Control
+			if Game.style[kind] == id:
+				act = _state("En uso")
+			elif owned:
+				act = _use_button(Game.set_style.bind(kind, id))
+			else:
+				act = _price(int(d.price), d.get("cur", "coins"), int(d.get("level", 1)), Game.buy_style.bind(kind, id))
+			var desc := "Del tema %s" % Catalog.THEMES[d.theme].name if d.has("theme") else ("De serie" if int(d.price) == 0 else "")
+			_card(gk, Previews.style(kind, id, 110), d.name, desc, act)
+	_section(Catalog.STYLE_NAMES.ambience, "guirnalda, cuadro y atrezo")
+	var ga := _grid()
+	for id in [""] + Catalog.THEME_ORDER:
+		if not Game.owns_style("ambience", id):
+			continue
+		var act: Control = _state("En uso") if Game.style.ambience == id else _use_button(Game.set_style.bind("ambience", id))
+		_card(ga, Previews.style("ambience", id, 110), "Sin adornos" if id == "" else Catalog.THEMES[id].name, "", act)
+
+
+func _use_button(action: Callable, text := "Usar") -> Button:
+	var b := UI.button(text)
+	b.custom_minimum_size.y = 62
+	b.pressed.connect(_after.bind(action))
+	return b

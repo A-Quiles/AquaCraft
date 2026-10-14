@@ -109,12 +109,12 @@ func scroll_area() -> VBoxContainer:
 
 ## Fila de pestañas. Devuelve los botones; on_pick recibe el índice.
 func tabs(names: Array, current: int, on_pick: Callable) -> Array:
-	var row := UI.hbox(8)
+	var row := UI.hbox(8 if names.size() < 6 else 5)
 	var out: Array = []
 	for i in names.size():
 		var b := UI.button(names[i])
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.add_theme_font_size_override("font_size", 21)
+		b.add_theme_font_size_override("font_size", 21 if names.size() < 6 else 18)
 		b.custom_minimum_size.y = 58
 		if i != current:
 			for k in ["normal", "hover"]:

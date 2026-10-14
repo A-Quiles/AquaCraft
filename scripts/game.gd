@@ -17,7 +17,7 @@ const SAVE_VERSION := 3              ## 2: pecera redonda al principio (tier +1)
 ## Lo que es propio de cada pecera (el resto —dinero, nivel, inventario...— es común).
 const TANK_FIELDS := ["tank_name", "tank_tier", "water_kind", "salinity", "equipment", "equip_cond", "equip_pos", "heater_target",
 	"water_temp", "substrate", "decor", "terrain", "floor_dirt", "fish", "eggs", "algae", "ph_adjust", "algae_block_until",
-	"o2_until", "last_sim"]
+	"o2_until", "last_sim", "style"]
 const GW := 40                       ## rejilla de algas del cristal
 const GH := 60
 const ROOM_TEMP := 23.0
@@ -47,6 +47,8 @@ var floor_dirt: Array = []           ## suciedad del fondo por columnas (Catalog
 var equip_inv := {}                  ## aparatos retirados y guardados: id → cantidad
 var o2_until := 0.0                  ## pastillas de oxígeno: hasta cuándo actúan
 var show_names := false              ## nombres encima de los peces
+var style := Catalog.STYLE_DEFAULT.duplicate()   ## pared, mueble, fondo y ambiente de esta pecera
+var owned_styles: Array = []         ## piezas y temas comprados ("wall:crema", "theme:navidad"...); sirven para todas
 var food := {"granulos": 5, "artemia": 3}
 var products := {"ph_up": 1, "ph_down": 1, "antialgas": 1}
 var ph_adjust := 0.0                 ## efecto de los reguladores de pH (se disipa con el tiempo)
@@ -152,6 +154,14 @@ func _demo(tier: int) -> void:
 	_check_daily()
 	streak.pending = false
 	started = true
+	# Estilo para capturas: `theme=navidad` o `look=wall:ladrillo,stand:industrial,backdrop:rocas`.
+	if _arg("theme") != "":
+		owned_styles.append("theme:" + _arg("theme"))
+		for k in Catalog.STYLE_KINDS:
+			style[k] = _arg("theme")
+	for part in _arg("look").split(",", false):
+		owned_styles.append(part)
+		style[part.get_slice(":", 0)] = part.get_slice(":", 1)
 	last_sim = Time.get_unix_time_from_system()
 	tanks = [_snapshot()]
 
@@ -199,6 +209,7 @@ func new_game(game_mode := "normal", water_type := "dulce") -> void:
 	level = 1
 	xp = 0
 	owned_substrates = []
+	owned_styles = []
 	decor_inv = {}
 	equip_inv = {}
 	food = {"granulos": 5, "artemia": 6, "nori": 4 if water_type == "salada" else 0}
@@ -223,6 +234,7 @@ func new_game(game_mode := "normal", water_type := "dulce") -> void:
 ## Pecera nueva: redonda, sin aparatos. starter = con la decoración de bienvenida.
 func _init_tank(water_type: String, nm: String, starter: bool) -> void:
 	tank_name = nm
+	style = Catalog.STYLE_DEFAULT.duplicate()
 	water_kind = water_type
 	salinity = 1.0245
 	tank_tier = 0
@@ -342,7 +354,7 @@ func save_game() -> void:
 		enc.append(c)
 	var data := {
 		"v": SAVE_VERSION, "mode": mode, "coins": coins, "pearls": pearls, "level": level, "xp": xp,
-		"owned_substrates": owned_substrates, "decor_inv": decor_inv, "equip_inv": equip_inv, "show_names": show_names,
+		"owned_substrates": owned_substrates, "owned_styles": owned_styles, "decor_inv": decor_inv, "equip_inv": equip_inv, "show_names": show_names,
 		"food": food, "products": products, "stats": stats, "discovered": discovered, "daily": daily,
 		"story_idx": story_idx, "next_id": next_id, "started": started, "tanks": enc, "active": active,
 		"orders": orders, "next_order_at": next_order_at, "streak": streak, "settings": settings,
@@ -382,6 +394,7 @@ func load_game() -> bool:
 		equip_inv[k] = int(equip_inv[k])
 	show_names = bool(d.get("show_names", false))
 	owned_substrates = d.owned_substrates
+	owned_styles = d.get("owned_styles", [])
 	products = d.get("products", {"ph_up": 1, "ph_down": 1, "antialgas": 1})
 	for k in products:
 		products[k] = int(products[k])
@@ -420,6 +433,11 @@ func load_game() -> bool:
 ## Datos de una pecera desde el JSON (con valores por defecto para guardados antiguos).
 func _read_tank(td: Dictionary, v: int, i: int) -> void:
 	tank_name = td.get("tank_name", "Pecera %d" % (i + 1))
+	style = Catalog.STYLE_DEFAULT.duplicate()
+	style.merge(td.get("style", {}), true)
+	for k in Catalog.STYLE_KINDS:            # piezas que ya no existen vuelven a las de serie
+		if k != "ambience" and not Catalog.style_items(k).has(style[k]) or k == "ambience" and style[k] != "" and not Catalog.THEMES.has(style[k]):
+			style[k] = Catalog.STYLE_DEFAULT[k]
 	water_kind = td.get("water_kind", td.get("water", "dulce"))
 	salinity = float(td.get("salinity", 1.0245))
 	tank_tier = int(td.tank_tier)
@@ -1412,6 +1430,73 @@ func buy_decor(id: String) -> void:
 		_bought("%s colocado: arrástralo en modo Decorar" % d.name, "plant")
 	else:
 		_bought("%s guardado en el inventario" % d.name, "plant")
+
+
+# ───────────────────────── Estilo: pared, mueble, fondo y temas ─────────────────────────
+
+func owns_style(kind: String, id: String) -> bool:
+	if kind == "ambience":
+		return id == "" or ("theme:" + id) in owned_styles
+	var d: Dictionary = Catalog.style_items(kind)[id]
+	if d.has("theme"):
+		return ("theme:" + str(d.theme)) in owned_styles
+	return int(d.price) == 0 or (kind + ":" + id) in owned_styles
+
+
+## Compra la pieza si hace falta y la pone en esta pecera.
+func buy_style(kind: String, id: String) -> void:
+	if not owns_style(kind, id):
+		var d: Dictionary = Catalog.style_items(kind)[id]
+		if d.has("theme") or not spend(int(d.price), d.get("cur", "coins")):
+			return
+		owned_styles.append(kind + ":" + id)
+		_bump("bought", 1)
+		toast.emit("¡%s desbloqueado!" % d.name, "star")
+	set_style(kind, id)
+
+
+func set_style(kind: String, id: String) -> void:
+	if not owns_style(kind, id):
+		return
+	style[kind] = id
+	tank_changed.emit()
+	changed.emit()
+	_dirty = true
+
+
+## Precio del tema ahora (rebajado durante su evento de temporada).
+func theme_price(id: String) -> int:
+	var t: Dictionary = Catalog.THEMES[id]
+	var on_sale: bool = t.season != "" and current_event().get("id", "") == t.season
+	return int(ceil(int(t.price) * (Catalog.THEME_SALE if on_sale else 1.0)))
+
+
+func theme_on_sale(id: String) -> bool:
+	return theme_price(id) < int(Catalog.THEMES[id].price)
+
+
+## Compra (si hace falta) y aplica un tema completo: pared, mueble, fondo y ambiente.
+func buy_theme(id: String) -> void:
+	var t: Dictionary = Catalog.THEMES[id]
+	if not ("theme:" + id) in owned_styles:
+		if not spend(theme_price(id), t.cur):
+			return
+		owned_styles.append("theme:" + id)
+		_bump("bought", 1)
+		add_xp(10)
+		toast.emit("¡Tema %s desbloqueado!" % t.name, "star")
+	for k in Catalog.STYLE_KINDS:
+		style[k] = id
+	tank_changed.emit()
+	changed.emit()
+	_dirty = true
+
+
+func theme_applied(id: String) -> bool:
+	for k in Catalog.STYLE_KINDS:
+		if style[k] != id:
+			return false
+	return true
 
 
 func buy_substrate(id: String) -> void:

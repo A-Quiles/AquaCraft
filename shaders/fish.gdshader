@@ -1,8 +1,9 @@
 shader_type canvas_item;
-// Pez 100% procedural con anatomía por especie: perfil de lomo y vientre independientes,
-// 7 tipos de cola, dorsal (y 2ª dorsal) y anal con barrido, adiposa, barbillones, filamentos,
-// pectoral, ojo, patrón, escamas y brillo. Todo con distancias firmadas (bordes suaves vía fwidth).
-// Ejes: x de -1 (cola) a 1 (hocico), y hacia arriba; el quad mide 2 × 2/aspect.
+// Pez 100% procedural con anatomía por especie: perfil de lomo y vientre, 7 tipos de cola, dorsal
+// (y 2ª dorsal), anal, adiposa, pectoral, pélvicas, barbillones y filamentos.
+// Aletas: membrana translúcida con radios, borde festoneado entre radios y ondas que la recorren al nadar.
+// Cuerpo: escamas imbricadas con destellos, contrasombreado, especular, luz de contorno y branquias que respiran.
+// Ejes: x de -1 (cola) a 1 (hocico), y hacia arriba; el quad mide 2 × 2/aspect. Bordes suaves vía fwidth.
 
 uniform vec3 col_body : source_color = vec3(0.85, 0.87, 0.9);
 uniform vec3 col_pat : source_color = vec3(1.0, 0.35, 0.2);
@@ -51,7 +52,7 @@ float vnoise(vec2 p) {
 }
 
 float fill(float d) {
-	float w = fwidth(d) * 0.8 + 1e-5;
+	float w = min(fwidth(d) * 0.8, 0.05) + 1e-5;     // tope: donde la forma se pliega, fwidth se dispara
 	return clamp(0.5 - d / w, 0.0, 1.0);
 }
 
@@ -83,6 +84,62 @@ float prof(float t, float kr, float kf) {
 float top_at(float t) { return h_top * prof(t, k_rear, k_front); }
 float bot_at(float t) { return -h_bot * prof(t, k_bot, mix(k_front, k_bot, 0.5)); }
 
+// Radios de aleta: c vale un entero sobre cada radio. Se apagan cuando quedan a menos de ~3 px.
+float ray_mask(float c, float w) {
+	float f = abs(fract(c + 0.5) - 0.5);
+	float fw = fwidth(c) + 1e-5;
+	return clamp((w - f) / fw + 0.5, 0.0, 1.0) * clamp(1.6 - fw * 5.0, 0.0, 1.0);
+}
+
+// 0 sobre un radio, 1 a medio camino entre dos: la membrana se recoge entre radios (borde festoneado).
+float ray_gap(float c) {
+	return abs(fract(c + 0.5) - 0.5) * 2.0;
+}
+
+// Membrana de aleta. u: 0 en la base → 1 en el borde; c: coordenada de radios; w: ondulación.
+vec4 membrane(vec3 base_c, vec3 fin_c, float u, float c, float spots, float alpha_k, float w) {
+	float r = ray_mask(c, mix(0.14, 0.06, u));
+	vec3 col = mix(base_c, fin_c, smoothstep(0.0, 0.38, u));
+	col = mix(col * 1.07 + 0.035, col * 0.74, r);                                   // radios más saturados
+	col *= 1.0 - 0.12 * smoothstep(0.55, 0.78, u) * (1.0 - smoothstep(0.82, 0.95, u)); // banda submarginal
+	col += vec3(0.85, 0.96, 1.0) * 0.2 * smoothstep(0.84, 1.0, u);                  // borde fino a contraluz
+	col *= 0.93 + 0.1 * sin(w);                                                     // pliegues que captan la luz
+	col = mix(col, albinize(col_pat) * 0.85, spots);                                 // manchas del color del patrón
+	float a = mix(0.9, 0.4, u * u);
+	a = mix(a * 0.78, min(1.0, a * 1.25), r);
+	return vec4(col, a * alpha_k);
+}
+
+// Lunares o moteado también en las aletas, como en los guppys y platys reales.
+float fin_spots(vec2 q) {
+	if (pattern == 2) {
+		vec2 sp = q * 30.0 + seed * 9.0;
+		vec2 cell = floor(sp);
+		vec2 off = vec2(hash(cell + 1.3), hash(cell + 5.1)) - 0.5;
+		return smoothstep(0.26, 0.16, length(fract(sp) - 0.5 - off * 0.3)) * step(0.45, hash(cell)) * 0.75;
+	} else if (pattern == 6) {
+		return smoothstep(0.5, 0.58, vnoise(q * 11.0 + seed * 3.0)) * 0.55;
+	}
+	return 0.0;
+}
+
+mat2 rot(float a) {
+	return mat2(vec2(cos(a), sin(a)), vec2(-sin(a), cos(a)));
+}
+
+// Aleta en abanico desde un punto (pectoral y pélvicas). dir: hacia dónde apunta; open: 0 cerrada · 1 abierta.
+vec4 fan_fin(vec2 q, vec2 pivot, float ang, float len, float wide, float open, float nrays, vec3 base_c, vec3 fin_c, float alpha_k, float w) {
+	vec2 v = rot(-ang) * (q - pivot);
+	float u = v.x / len;
+	float hw = len * wide * (0.12 + 0.88 * open) * sqrt(clamp(u, 0.0, 1.0)) * (1.25 - 0.45 * u);
+	float vn = clamp(v.y / max(hw, 1e-4), -1.5, 1.5);
+	float c = vn * nrays * 0.5;
+	float tip = 1.0 - 0.28 * vn * vn - 0.05 * ray_gap(c);
+	float d = max(abs(v.y) - hw, max(-v.x, (u - tip) * len));
+	vec4 m = membrane(base_c, fin_c, clamp(u / max(tip, 0.1), 0.0, 1.0), c, 0.0, alpha_k, w + u * 3.0);
+	return vec4(m.rgb, m.a * fill(d));
+}
+
 void fragment() {
 	float ylim = 1.0 / aspect;
 	vec2 p = vec2((UV.x - 0.5) * 2.0, (0.5 - UV.y) * 2.0 * ylim);
@@ -97,13 +154,14 @@ void fragment() {
 	dor.z *= 1.0 + veil * 0.45;
 	vec4 an = anal;
 	an.z *= 1.0 + veil * 0.6;
+	float flow = 1.0 + veil * 0.9 + (tail_type == 3 ? 0.7 : 0.0);   // las aletas largas ondean más
 
-	// Onda de natación: crece hacia la cola.
-	float tailw = clamp((xs + L * 0.65 - p.x) / (L * 0.65 + tl), 0.0, 1.0);
-	float bend = sin(tt - p.x * 3.0) * 0.075 * wag_amp * tailw * tailw;
+	// Onda de natación: nace tras la cabeza y crece hacia la cola; el hocico apenas cabecea.
+	float tailw = clamp((xs + L * 0.75 - p.x) / (L * 0.75 + tl), 0.0, 1.0);
+	float bend = (sin(tt - p.x * 3.2) * 0.08 * tailw * tailw - sin(tt) * 0.006 * smoothstep(0.3, 1.0, p.x)) * wag_amp;
 	vec2 q = vec2(p.x, p.y - bend);
 
-	// ── Cuerpo ──
+	// ── Cuerpo (forma) ──
 	float t = (q.x - xs) / L;
 	float top = top_at(t);
 	float bot = bot_at(t);
@@ -119,16 +177,29 @@ void fragment() {
 	vec3 bodyc = albinize(col_body);
 	vec4 acc = vec4(0.0);
 
+	// ── Pélvicas: bajo el vientre, por detrás del cuerpo ──
+	if (threads <= 0.0) {
+		float pt = clamp(eye_t - 0.3, 0.25, 0.7);
+		float hh_p = top_at(pt) - bot_at(pt);
+		vec2 pv = vec2(xs + L * pt, bot_at(pt) + hh_p * 0.14);
+		float plen = clamp(hh_p * 0.42, 0.035, 0.15) * (1.0 + veil * 0.6);
+		vec4 pf = fan_fin(q, pv, 3.1416 + 0.75 + 0.12 * sin(tt * 1.1 + 1.0), plen, 0.42, 0.85, 5.0, bodyc, fin_c, 0.8, tt * 0.8);
+		acc = over(pf, acc);
+	}
+
 	// ── Cola ──
 	float pmid = (h_top - h_bot) * ped * 0.5;
 	float tx = (xs - q.x) / tl;
 	if (tx > -0.25) {
 		float yy = q.y - pmid;
-		float base_h = ped * (h_top + h_bot) * 0.42;
 		float k = clamp(tx, 0.0, 1.0);
-		float flex = 1.0 + 0.1 * sin(tt + 1.5);
+		// La onda sigue recorriendo la cola: el borde va con retraso respecto a la base.
+		yy -= sin(tt - k * 3.0) * 0.045 * flow * k * k * wag_amp;
+		float base_h = ped * (h_top + h_bot) * 0.42;
+		float flex = 1.0 + 0.09 * sin(tt + 1.5);
 		float hh;
 		float tip;
+		float nr = 8.0;
 		if (tail_type == 1) {
 			hh = mix(base_h, th, k) * flex;
 			tip = 1.0 - 0.6 * (1.0 - clamp(abs(yy) / max(hh, 1e-3), 0.0, 1.0));
@@ -140,6 +211,7 @@ void fragment() {
 			yy += tx * tx * 0.12;
 			hh = mix(base_h, th, sqrt(k)) * flex;
 			tip = 1.0 + 0.07 * sin(yy * 22.0 + tt * 0.7);
+			nr = 10.0;
 		} else if (tail_type == 4) {
 			hh = mix(base_h, th, pow(k, 1.1)) * flex;
 			float ny = clamp(abs(yy) / max(hh, 1e-3), 0.0, 1.0);
@@ -147,40 +219,47 @@ void fragment() {
 		} else if (tail_type == 5) {
 			hh = mix(base_h, th, k) * flex;
 			tip = 1.0 - 0.06 * pow(yy / max(hh, 1e-3), 2.0);
+			nr = 10.0;
 		} else if (tail_type == 6) {
 			hh = mix(base_h, th, sqrt(k)) * flex;
 			tip = 1.0 - 0.35 * pow(yy / max(hh, 1e-3), 2.0);
+			nr = 6.0;
 		} else {
 			hh = mix(base_h, th, pow(k, 0.8)) * flex;
 			tip = 1.0 - 0.15 * pow(yy / max(hh, 1e-3), 2.0);
 		}
+		float ny = clamp(yy / max(hh, 1e-3), -1.0, 1.0);
+		float c = ny * nr;
+		tip -= 0.07 * pow(ray_gap(c), 1.6);                  // festón entre radios
 		float d_tail = max(abs(yy) - hh, (tx - tip) * tl);
 		float a_tail = fill(d_tail) * step(-0.25, tx);
-		// Radios marcados y membrana translúcida entre ellos, borde más claro.
-		float rays = pow(0.5 + 0.5 * sin(atan(yy, tx * tl + 0.05) * 44.0), 3.0);
-		vec3 tc = mix(bodyc * 0.9, fin_c, smoothstep(0.0, 0.35, tx)) * (0.86 + 0.24 * rays);
-		tc += vec3(0.2) * smoothstep(0.82, 1.0, tx / max(tip, 0.01));
-		acc = over(vec4(tc, a_tail * mix(0.95, 0.62, k) * (0.82 + 0.18 * rays)), acc);
+		float u = clamp(tx / max(tip, 0.05), 0.0, 1.0);
+		vec4 m = membrane(bodyc * 0.92, fin_c, u, c, fin_spots(q) * smoothstep(0.15, 0.4, u), 1.0, ny * 2.5 - tt * 1.4 + u * 4.0);
+		acc = over(vec4(m.rgb, m.a * a_tail), acc);
 	}
 
-	// ── Aletas dorsales (se inclinan hacia atrás con la altura) ──
+	// ── Aletas dorsales (se inclinan hacia atrás con la altura y ondean de delante atrás) ──
 	float ys = q.y - top;
 	if (ys > -0.04) {
-		float ts = t + max(ys, 0.0) * dor.w / L;
+		float sweep = dor.w * (1.0 + 0.12 * flow * sin(tt * 0.8));
+		float ts = t + max(ys, 0.0) * sweep / L;
 		float s = (ts - dor.x) / max(dor.y - dor.x, 1e-3);
 		if (s > 0.0 && s < 1.0) {
+			float c = s * max(5.0, (dor.y - dor.x) * L * 38.0);
 			float fh = min(dor.z * pow(sin(3.1416 * pow(s, 1.25)), dorsal_pt), ylim - top - 0.01);
+			fh *= (1.0 + 0.06 * flow * sin(s * 7.0 - tt * 1.6)) * (1.0 - 0.08 * pow(ray_gap(c), 1.5));
 			float ft = clamp(ys / max(fh, 1e-3), 0.0, 1.0);
-			vec3 dc = mix(fin_c, bodyc, 0.25 * (1.0 - ft)) * (0.92 + 0.1 * (0.5 + 0.5 * sin(s * 60.0)));
-			dc = mix(dc, dc + 0.16, ft * ft);
-			acc = over(vec4(dc, fill(max(ys - fh, -ys - 0.04)) * mix(0.88, 0.62, ft)), acc);
+			vec4 m = membrane(bodyc, fin_c, ft, c, fin_spots(q) * 0.7, 0.96, s * 7.0 - tt * 1.6 + ft * 2.0);
+			acc = over(vec4(m.rgb, m.a * fill(max(ys - fh, -ys - 0.04))), acc);
 		}
 		if (dorsal2 > 0.0) {
 			float d0 = dor.x - (dor.y - dor.x) * 1.15;
 			float s2 = (ts - d0) / max(dor.x - 0.02 - d0, 1e-3);
 			if (s2 > 0.0 && s2 < 1.0) {
-				float fh2 = dorsal2 * pow(sin(3.1416 * pow(s2, 1.3)), 0.7);
-				acc = over(vec4(fin_c * 0.95, fill(max(ys - fh2, -ys - 0.04)) * 0.8), acc);
+				float c2 = s2 * 6.0;
+				float fh2 = dorsal2 * pow(sin(3.1416 * pow(s2, 1.3)), 0.7) * (1.0 - 0.08 * pow(ray_gap(c2), 1.5));
+				vec4 m2 = membrane(bodyc, fin_c * 0.95, clamp(ys / max(fh2, 1e-3), 0.0, 1.0), c2, 0.0, 0.9, s2 * 6.0 - tt * 1.6);
+				acc = over(vec4(m2.rgb, m2.a * fill(max(ys - fh2, -ys - 0.04))), acc);
 			}
 		}
 		if (adipose > 0.0) {
@@ -190,24 +269,25 @@ void fragment() {
 		}
 	}
 
-	// ── Aleta anal (y pélvica) ──
+	// ── Aleta anal ──
 	float yb = bot - q.y;
 	if (yb > -0.04) {
-		float ts = t + max(yb, 0.0) * an.w / L;
+		float ts = t + max(yb, 0.0) * an.w * (1.0 + 0.12 * flow * sin(tt * 0.8 + 1.0)) / L;
 		float s = (ts - an.x) / max(an.y - an.x, 1e-3);
 		if (s > 0.0 && s < 1.0) {
+			float c = s * max(5.0, (an.y - an.x) * L * 38.0);
 			float fh = min(an.z * pow(sin(3.1416 * pow(s, 1.2)), dorsal_pt * 0.9), ylim + bot - 0.01);
+			fh *= (1.0 + 0.07 * flow * sin(s * 6.0 - tt * 1.5 + 0.8)) * (1.0 - 0.08 * pow(ray_gap(c), 1.5));
 			float ft = clamp(yb / max(fh, 1e-3), 0.0, 1.0);
-			vec3 ac = fin_c * (0.9 + 0.1 * (0.5 + 0.5 * sin(s * 54.0)));
-			ac = mix(ac, ac + 0.14, ft * ft);
-			acc = over(vec4(ac, fill(max(yb - fh, -yb - 0.04)) * mix(0.85, 0.6, ft)), acc);
+			vec4 m = membrane(bodyc * 0.95, fin_c, ft, c, fin_spots(q) * 0.7, 0.92, s * 6.0 - tt * 1.5 + ft * 2.0);
+			acc = over(vec4(m.rgb, m.a * fill(max(yb - fh, -yb - 0.04))), acc);
 		}
 	}
 
-	// ── Filamentos ventrales (pez ángel) ──
+	// ── Filamentos ventrales (pez ángel): ondean con el agua ──
 	if (threads > 0.0) {
 		vec2 a0 = vec2(xs + L * 0.62, bot_at(0.62) + 0.02);
-		vec2 a1 = a0 + vec2(-0.12, -threads);
+		vec2 a1 = a0 + vec2(-0.12 + 0.03 * sin(tt * 0.9), -threads);
 		a1.y = max(a1.y, -ylim + 0.02);
 		acc = over(vec4(fin_c * 0.9, fill(seg(q, a0, a1) - 0.009) * 0.85), acc);
 		acc = over(vec4(fin_c * 0.8, fill(seg(q, a0 + vec2(0.03, 0.0), a1 + vec2(0.05, 0.06)) - 0.007) * 0.7), acc);
@@ -255,68 +335,114 @@ void fragment() {
 		pm = smoothstep(0.03, -0.03, abs(dy + 0.05) - w) * step(dx, 0.2) * smoothstep(-0.85, -0.6, dx);
 	}
 	vec3 bc = albinize(mix(base, col_pat, pm));
+	bc *= 0.95 + 0.1 * vnoise(q * 7.0 + seed * 11.0);                       // moteado natural muy suave
 
-	// Volumen: el cuerpo es un óvalo en sección; luz desde arriba y de frente.
-	float nz = sqrt(max(0.0, 1.0 - dy * dy));
-	float lambert = clamp(0.62 * dy + 0.7 * nz + 0.1, 0.0, 1.0);
-	bc = mix(bc * 1.12 + 0.06, bc, smoothstep(-0.95, 0.05, dy));          // vientre más claro (contrasombreado)
-	bc *= mix(0.62, 1.08, lambert);
-	// Escamas romboidales con borde oscuro y reflejo en el centro (se desvanecen en peces pequeños).
-	vec2 sc = vec2(q.x * 52.0 + q.y * 26.0, q.y * 60.0 - q.x * 20.0);
-	sc.x += mod(floor(sc.y), 2.0) * 0.5;
-	vec2 sf = fract(sc) - 0.5;
-	float scl_edge = smoothstep(0.32, 0.48, max(abs(sf.x), abs(sf.y) * 1.1));
-	float scl_w = clamp(1.0 - fwidth(q.x) * 60.0, 0.0, 1.0) * smoothstep(0.62, -0.15, dx) * smoothstep(-1.0, -0.6, dy);
-	bc *= 1.0 - scl_edge * 0.12 * scl_w;
-	bc += vec3(1.0) * (1.0 - scl_edge) * 0.04 * scl_w * lambert;
-	// Iridiscencia suave que cambia con el movimiento.
+	// ── Volumen: sección ovalada, morro y pedúnculo redondeados, luz desde arriba y de frente ──
+	float nz0 = sqrt(max(0.0, 1.0 - dy * dy));
+	float nxs = smoothstep(0.5, 1.0, dx) * 0.9 - smoothstep(-0.7, -1.0, dx) * 0.4;
+	vec3 n = normalize(vec3(nxs * nz0, dy, nz0 + 0.05));
+	vec3 ld = normalize(vec3(0.25, 0.8, 0.55));
+	float lam = clamp(dot(n, ld) * 0.6 + 0.45, 0.0, 1.0);
+	// Contrasombreado: lomo más oscuro, vientre claro y algo nacarado.
+	vec3 belly = mix(bc, vec3(1.0, 0.98, 0.94), 0.32) * 1.04;
+	bc = mix(belly, bc, smoothstep(-0.9, -0.15, dy));
+	bc = mix(bc, bc * vec3(0.72, 0.76, 0.84), smoothstep(0.35, 1.0, dy) * 0.4);
+	bc *= mix(0.66, 1.1, lam);
+
+	// ── Escamas imbricadas: cada fila tapa el arranque de la siguiente, así solo se ve el borde trasero ──
+	vec2 g = vec2(nose - q.x, q.y) * 30.0;                 // 1 = distancia entre filas
+	const float SC = 0.55;                                 // separación entre columnas (las escamas se solapan)
+	const float SR = 0.75;
+	float c0 = floor(g.x / SC);
+	float bd = 1.0;
+	float bx = 0.0;
+	float shade = 0.0;
+	vec2 bid = vec2(0.0);
+	for (int i = 0; i >= -1; i--) {
+		float cx = c0 + float(i);
+		float off = mod(cx, 2.0) * 0.5;
+		vec2 cc = vec2(cx * SC, floor(g.y - off + 0.5) + off);
+		vec2 dv = g - cc;
+		float d = length(dv) / SR;
+		if (d < 1.0) {                                     // la más adelantada que cubre el punto queda encima
+			bd = d;
+			bx = dv.x / SR;
+			bid = vec2(cx, cc.y);
+		} else if (i == -1) {
+			shade = smoothstep(1.2, 1.0, d);               // sombra que proyecta la escama de delante
+		}
+	}
+	float sc_w = clamp(1.5 - fwidth(g.x) * 3.0, 0.0, 1.0) * smoothstep(0.58, 0.25, dx) * smoothstep(-1.0, -0.72, dy) * smoothstep(-0.98, -0.82, dx);
+	float edge = smoothstep(0.82, 0.98, bd) * smoothstep(-0.1, 0.3, bx);       // borde libre (trasero)
+	float glint = hash(bid + seed * 3.0);
+	bc *= 1.0 - (edge * 0.15 + shade * 0.1) * sc_w;
+	bc += bc * smoothstep(0.5, 0.85, bd) * (1.0 - edge) * smoothstep(0.0, 0.6, bx) * 0.08 * sc_w * lam;  // reflejo junto al borde
+	bc += vec3(1.0, 0.98, 0.9) * pow(glint, 22.0) * (1.0 - bd) * sc_w * 0.4
+		* (0.5 + 0.5 * sin(TIME * 1.7 + glint * 40.0 + phase * 0.2));          // destellos sueltos
+	// Iridiscencia que cambia con el movimiento.
 	vec3 iri = 0.5 + 0.5 * cos(6.2832 * (dy * 0.8 + dx * 0.3 + tt * 0.05 + vec3(0.0, 0.33, 0.67)));
-	bc += iri * 0.05 * smoothstep(-0.2, 0.6, dy) * scl_w;
-	// Brillo especular del lomo y línea lateral.
-	bc += vec3(1.0) * exp(-pow((dy - 0.55) * 3.4, 2.0)) * smoothstep(-0.75, 0.35, dx) * 0.22;
+	bc += iri * 0.06 * smoothstep(-0.2, 0.6, dy) * (1.0 - bd * 0.6) * sc_w;
+
+	// ── Brillo especular (roto por las escamas), contorno y rebote del fondo ──
+	vec3 hv = normalize(ld + vec3(0.0, 0.0, 1.0));
+	float spec = pow(max(dot(n, hv), 0.0), 26.0);
+	bc += vec3(1.0) * spec * 0.3 * (0.65 + 0.35 * (1.0 - edge * sc_w)) * smoothstep(-0.85, 0.3, dx);
+	float rim = pow(1.0 - nz0, 3.0);
+	bc += vec3(0.8, 0.95, 1.0) * rim * smoothstep(0.0, 0.8, dy) * 0.22;
+	bc += vec3(0.95, 0.85, 0.6) * rim * smoothstep(0.0, -0.8, dy) * 0.07;
+	// Línea lateral punteada.
 	float ll = abs(dy - (0.18 + 0.12 * dx));
-	bc *= 1.0 - 0.07 * smoothstep(0.03, 0.0, ll) * step(-0.85, dx) * step(dx, eye_t * 2.0 - 1.25) * (0.6 + 0.4 * step(0.5, fract(q.x * 40.0)));
-	// Opérculo (tapa de las branquias): sombra en media luna con borde claro.
-	float gx = xs + L * (eye_t - 0.13);
+	bc *= 1.0 - 0.08 * smoothstep(0.03, 0.0, ll) * step(-0.85, dx) * step(dx, eye_t * 2.0 - 1.25) * (0.6 + 0.4 * step(0.5, fract(q.x * 40.0)));
+	// Opérculo (tapa de las branquias): sombra en media luna con borde claro; se mueve al respirar.
+	float breath = 0.004 * sin(TIME * 3.2 + seed * 7.0);
+	float gx = xs + L * (eye_t - 0.13) + breath;
 	float gd = q.x - gx - 0.05 * dy * dy;
 	bc *= 1.0 - 0.16 * smoothstep(0.0, -0.04, gd) * smoothstep(-0.08, -0.02, gd) * step(abs(dy), 0.85);
-	bc += vec3(0.08) * smoothstep(0.008, 0.0, abs(gd)) * step(abs(dy), 0.8);
-	// Borde: oscurece hacia el contorno y luz de contorno arriba (piel fina a contraluz).
-	bc *= 1.0 - 0.22 * smoothstep(0.28, 0.0, inner);
-	bc += vec3(0.95, 1.0, 1.0) * smoothstep(0.12, 0.0, inner) * smoothstep(0.2, 0.9, dy) * 0.18;
-	bc = mix(bc, bc * 0.45, smoothstep(0.06, 0.0, inner) * 0.55 * (1.0 - smoothstep(0.2, 0.9, dy)));
+	bc += vec3(0.09) * smoothstep(0.008, 0.0, abs(gd)) * step(abs(dy), 0.8);
+	// Cabeza algo más lisa y brillante que el resto.
+	bc += vec3(0.04) * smoothstep(0.0, 0.01, gd) * lam;
+	// Borde: piel fina que oscurece al girar hacia fuera.
+	bc *= 1.0 - 0.16 * smoothstep(0.22, 0.0, inner);
+	bc = mix(bc, bc * 0.5, smoothstep(0.05, 0.0, inner) * 0.45 * (1.0 - smoothstep(0.2, 0.9, dy)));
 	bc += col_pat * neon * 0.38 * (0.75 + 0.25 * sin(TIME * 2.2 + seed * 5.0)) * (pm + 0.35);
 
-	// Ojo
+	// ── Ojo: cuenca, iris dorado con estrías, pupila y dos reflejos ──
 	float et = clamp(eye_t, 0.5, 0.95);
 	float etop = top_at(et);
 	float ebot = bot_at(et);
 	vec2 ec = vec2(xs + L * et, mix((etop + ebot) * 0.5, etop, 0.32));
-	float er = clamp((etop - ebot) * 0.11, 0.024, 0.06);
+	float er = clamp((etop - ebot) * 0.12, 0.026, 0.065);
 	float de = length(q - ec);
 	float ang_e = atan(q.y - ec.y, q.x - ec.x);
-	vec3 iris = mix(vec3(0.98, 0.82, 0.38), vec3(0.55, 0.32, 0.1), 0.5 + 0.5 * sin(ang_e * 14.0));
-	iris = mix(iris, vec3(0.06, 0.05, 0.04), smoothstep(er * 0.55, er * 0.98, de));
-	vec3 eye = mix(mix(vec3(0.02), vec3(0.85, 0.12, 0.2), albino), iris, smoothstep(er * 0.5, er * 0.6, de));
-	eye = mix(eye, vec3(1.0), fill(length(q - ec - vec2(-er * 0.28, er * 0.3)) - er * 0.24));
-	eye = mix(eye, vec3(1.0), fill(length(q - ec - vec2(er * 0.25, -er * 0.25)) - er * 0.09) * 0.7);
-	bc *= 1.0 - 0.3 * fill(de - er * 1.35) * (1.0 - fill(de - er));      // cuenca del ojo
+	vec3 iris = mix(vec3(1.0, 0.84, 0.42), vec3(0.62, 0.36, 0.12), 0.5 + 0.5 * sin(ang_e * 16.0));
+	iris = mix(iris, mix(iris, col_pat, 0.3), smoothstep(er * 0.6, er * 0.9, de));
+	iris *= mix(1.15, 0.8, smoothstep(er * 0.4, er * 0.95, de)) * (0.85 + 0.25 * smoothstep(-er, er, q.y - ec.y));
+	iris = mix(iris, vec3(0.05, 0.04, 0.04), smoothstep(er * 0.82, er * 0.99, de));   // anillo oscuro
+	vec2 pup = ec + vec2(er * 0.06, 0.0);
+	vec3 eye = mix(mix(vec3(0.015), vec3(0.85, 0.12, 0.2), albino), iris, smoothstep(er * 0.47, er * 0.57, length(q - pup)));
+	eye = mix(eye, vec3(1.0), fill(length(q - ec - vec2(-er * 0.3, er * 0.32)) - er * 0.22) * 0.95);
+	eye = mix(eye, vec3(1.0), fill(length(q - ec - vec2(er * 0.28, -er * 0.28)) - er * 0.09) * 0.7);
+	bc *= 1.0 - 0.32 * fill(de - er * 1.4) * (1.0 - fill(de - er));                     // cuenca
+	bc += vec3(0.08) * fill(abs(de - er * 1.42) - er * 0.06) * step(0.0, q.y - ec.y);   // párpado claro arriba
 	bc = mix(bc, eye, fill(de - er));
-	// Boca
+	// Boca con labio
 	float my = (top_at(0.985) + bot_at(0.985)) * 0.5 - 0.004;
-	bc = mix(bc, bc * 0.35, fill(seg(q, vec2(nose - 0.035, my), vec2(nose, my + 0.004)) - 0.004) * 0.7);
+	bc = mix(bc, bc * 0.35, fill(seg(q, vec2(nose - 0.04, my), vec2(nose, my + 0.004)) - 0.0045) * 0.75);
+	bc += vec3(0.06) * fill(seg(q, vec2(nose - 0.035, my + 0.009), vec2(nose - 0.005, my + 0.011)) - 0.003);
 
 	acc = over(vec4(bc, a_body), acc);
 
-	// ── Pectoral y barbillones (delante del cuerpo) ──
-	vec2 pc = q - vec2(xs + L * (eye_t - 0.2), mix(mid, bot, 0.35));
-	float ang = -0.45 + 0.35 * sin(tt * 1.3);
-	pc = mat2(vec2(cos(ang), sin(ang)), vec2(-sin(ang), cos(ang))) * pc;
-	float pr = length(pc / vec2(max(L * 0.12, 0.07), max(half_h * 0.28, 0.03)));
-	acc = over(vec4(mix(fin_c, vec3(1.0), 0.15), fill((pr - 1.0) * 0.05) * 0.5 * step(pc.x, 0.0)), acc);
+	// ── Pectoral (delante del cuerpo): aletea abriéndose y cerrándose ──
+	float flap = 0.5 + 0.5 * sin(tt * 1.3);
+	vec2 pc0 = vec2(xs + L * (eye_t - 0.19), mix(mid, bot, 0.3));
+	float plen = clamp(L * 0.15, 0.06, 0.16) * (1.0 + veil * 0.4);
+	vec4 pf = fan_fin(q, pc0, 3.1416 + 0.4 + 0.3 * flap, plen, 0.38 * (top - bot) / max(plen, 0.01), mix(0.45, 1.0, flap), 7.0,
+		mix(fin_c, bodyc, 0.4), fin_c, 0.55, tt * 1.3);
+	acc = over(pf, acc);
 	if (barbels > 0.0) {
 		vec2 b0 = vec2(nose - 0.03, bot_at(0.95) + 0.01);
-		float db = min(seg(q, b0, b0 + vec2(0.07, -0.05)), seg(q, b0, b0 + vec2(0.03, -0.08)));
+		float wv = 0.01 * sin(tt * 1.5);
+		float db = min(seg(q, b0, b0 + vec2(0.07, -0.05 + wv)), seg(q, b0, b0 + vec2(0.03, -0.08 - wv)));
 		acc = over(vec4(bodyc * 0.7, fill(db - 0.006)), acc);
 	}
 

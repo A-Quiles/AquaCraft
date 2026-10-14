@@ -511,5 +511,74 @@ const TERRAIN_MIN := -0.05            ## fracción del alto de la pecera (cavar)
 const TERRAIN_MAX := 0.26             ## (montaña)
 
 
+# ───────────────────────── Estilo de la escena ─────────────────────────
+## Cada pecera guarda su estilo: pared (papel pintado de room.gdshader, `pat`), mueble (`kind` en RoomArt),
+## fondo de la pecera (water.gdshader, `bg`) y adornos de ambiente. Lo comprado sirve para todas las peceras.
+## Las piezas con `theme` vienen con su tema; las demás se compran sueltas (price 0 = de serie).
+const STYLE_KINDS := ["wall", "stand", "backdrop", "ambience"]
+const STYLE_NAMES := {"wall": "Pared", "stand": "Mueble", "backdrop": "Fondo de la pecera", "ambience": "Ambiente"}
+const STYLE_DEFAULT := {"wall": "clasica", "stand": "roble", "backdrop": "agua", "ambience": ""}
+
+const WALLS := {
+	"clasica": {"name": "Papel azul", "cols": ["2b3f61", "8f6b80", "ffffff"], "pat": 0, "price": 0},
+	"crema": {"name": "Rayas crema", "cols": ["e6d6b8", "c9a77f", "b08a5e"], "pat": 1, "price": 300, "level": 1},
+	"menta": {"name": "Menta con lunares", "cols": ["9fd3c4", "6aa99b", "ffffff"], "pat": 2, "price": 350, "level": 2},
+	"ladrillo": {"name": "Ladrillo visto", "cols": ["9a5a44", "6e3b2c", "d6c6b2"], "pat": 3, "price": 600, "level": 3},
+	"noche": {"name": "Cielo estrellado", "cols": ["131c42", "2c2364", "fff3c4"], "pat": 9, "price": 8, "cur": "pearls", "level": 4},
+	"navidad": {"name": "Bastón de caramelo", "cols": ["8c2129", "5a1519", "f3e9dc"], "pat": 4, "theme": "navidad"},
+	"otono": {"name": "Hojas de otoño", "cols": ["c27a40", "7a3d22", "f2c46b"], "pat": 5, "theme": "otono"},
+	"halloween": {"name": "Noche de brujas", "cols": ["2e1b48", "140b22", "ffb347"], "pat": 6, "theme": "halloween"},
+	"primavera": {"name": "Flores de cerezo", "cols": ["f3d3dc", "d9a6ba", "ffffff"], "pat": 7, "theme": "primavera"},
+	"zen": {"name": "Paneles shoji", "cols": ["ece2cb", "c9b690", "6b5434"], "pat": 8, "theme": "zen"},
+	"playa": {"name": "Casita de playa", "cols": ["bfe3ec", "7cc0d4", "ffffff"], "pat": 10, "theme": "playa"},
+}
+const STANDS := {
+	"roble": {"name": "Roble", "cols": ["b07a4f", "74492c", "82522f", "e6b85c"], "kind": 0, "price": 0},
+	"blanco": {"name": "Blanco nórdico", "cols": ["f2ece2", "ddd2c2", "e9e0d2", "b8925a"], "kind": 0, "price": 350, "level": 1},
+	"nogal": {"name": "Nogal con cajones", "cols": ["6b4630", "3e281b", "4c3223", "d8b26a"], "kind": 2, "price": 450, "level": 2},
+	"industrial": {"name": "Industrial", "cols": ["a87b55", "2e3338", "3a4046", "9aa3ab"], "kind": 1, "price": 800, "level": 4},
+	"navidad": {"name": "Mueble navideño", "cols": ["f4f1ea", "a8222a", "bd2c35", "e8c35a"], "kind": 0, "theme": "navidad"},
+	"otono": {"name": "Rústico otoñal", "cols": ["a0602e", "5c3519", "6e4020", "d99a3a"], "kind": 2, "theme": "otono"},
+	"halloween": {"name": "Cómoda gótica", "cols": ["4a3658", "1c1424", "2a1d35", "ff9a3a"], "kind": 0, "theme": "halloween"},
+	"primavera": {"name": "Blanco floral", "cols": ["fff7f2", "f0d9df", "f7e7ea", "e88aa8"], "kind": 2, "theme": "primavera"},
+	"zen": {"name": "Bambú", "cols": ["c9a86a", "8a6a3a", "b8955a", "4a3a22"], "kind": 3, "theme": "zen"},
+	"playa": {"name": "Madera de deriva", "cols": ["ddd0bb", "8fb3bf", "a9c8d1", "f4f4f4"], "kind": 0, "theme": "playa"},
+}
+const BACKDROPS := {
+	"agua": {"name": "Agua clara", "cols": ["000000", "000000"], "bg": 0, "price": 0},
+	"azul": {"name": "Azul profundo", "cols": ["06235e", "1a62b8"], "bg": 1, "price": 250, "level": 1},
+	"negro": {"name": "Negro mate", "cols": ["04070b", "121a24"], "bg": 2, "price": 250, "level": 1},
+	"rocas": {"name": "Pared de roca", "cols": ["4e463d", "8f8373"], "bg": 3, "price": 700, "level": 3},
+	"plantas": {"name": "Jungla al fondo", "cols": ["163f24", "3f8a4a"], "bg": 4, "price": 700, "level": 3},
+	"arrecife": {"name": "Arrecife lejano", "cols": ["c75f7a", "f0a040"], "bg": 5, "price": 10, "cur": "pearls", "level": 4},
+	"navidad": {"name": "Nevada submarina", "cols": ["0e2450", "ffffff"], "bg": 6, "theme": "navidad"},
+	"otono": {"name": "Bosque otoñal", "cols": ["7a3a12", "f0a030"], "bg": 7, "theme": "otono"},
+	"halloween": {"name": "Luna llena", "cols": ["2a1446", "ffe9a8"], "bg": 8, "theme": "halloween"},
+	"primavera": {"name": "Lluvia de pétalos", "cols": ["e98fb0", "ffe4ee"], "bg": 9, "theme": "primavera"},
+	"zen": {"name": "Bambú sumergido", "cols": ["2f5a3a", "a8c48a"], "bg": 10, "theme": "zen"},
+	"playa": {"name": "Dunas al sol", "cols": ["e8d39a", "fff2c4"], "bg": 11, "theme": "playa"},
+}
+## Temas: traen pared, mueble, fondo y adornos de ambiente (guirnalda, cuadro y atrezo sobre el mueble).
+## `season`: evento de Catalog.EVENTS en el que está rebajado (THEME_SALE).
+const THEMES := {
+	"navidad": {"name": "Navidad", "desc": "Guirnalda con luces, abeto con regalos, nieve en las baldas y nevada bajo el agua.", "price": 1400, "cur": "coins", "level": 2, "season": "navidad"},
+	"otono": {"name": "Otoño", "desc": "Hojas secas, calabazas y velas, mueble rústico y un bosque dorado al fondo.", "price": 1200, "cur": "coins", "level": 2, "season": ""},
+	"halloween": {"name": "Halloween", "desc": "Banderines con murciélagos, calabaza con vela y luna llena tras el agua.", "price": 1400, "cur": "coins", "level": 2, "season": "halloween"},
+	"primavera": {"name": "Primavera", "desc": "Flores de cerezo, tulipanes y pétalos que caen dentro de la pecera.", "price": 1200, "cur": "coins", "level": 2, "season": "primavera"},
+	"zen": {"name": "Jardín zen", "desc": "Paneles de papel, bonsái, piedras y bambú sumergido. Pura calma.", "price": 18, "cur": "pearls", "level": 3, "season": ""},
+	"playa": {"name": "Casita de playa", "desc": "Banderines, conchas y estrellas de mar, madera clara y dunas al sol.", "price": 1300, "cur": "coins", "level": 2, "season": "verano"},
+}
+const THEME_ORDER := ["navidad", "otono", "halloween", "primavera", "zen", "playa"]
+const THEME_SALE := 0.6               ## precio en su temporada
+
+
+static func style_items(kind: String) -> Dictionary:
+	match kind:
+		"wall": return WALLS
+		"stand": return STANDS
+		"backdrop": return BACKDROPS
+	return {}
+
+
 static func color(hex: String) -> Color:
 	return Color.html(hex)

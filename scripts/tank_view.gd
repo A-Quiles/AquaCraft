@@ -174,6 +174,7 @@ func rebuild() -> void:
 	_water.material.set_shader_parameter("top_col", Color(0.5, 0.88, 1.0) if marine else Color(0.42, 0.88, 0.9))
 	_water.material.set_shader_parameter("deep_col", Color(0.02, 0.17, 0.42) if marine else Color(0.02, 0.24, 0.38))
 	sm.set_shader_parameter("fog_col", Color(0.04, 0.22, 0.45) if marine else Color(0.04, 0.3, 0.42))
+	RoomArt.apply_backdrop(_water.material, Game.style.backdrop)
 	_build_decor()
 	_build_pump()
 	_equip.queue_redraw()

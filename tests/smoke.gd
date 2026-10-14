@@ -25,7 +25,7 @@ func _process(delta: float) -> bool:
 			game.coins = 99999
 			game.pearls = 999
 			game.level = 10
-			for t in 5:
+			for t in 6:                       # pestañas de la tienda
 				hud.open_shop(t)
 		1:
 			var shop = hud._sheet
@@ -36,6 +36,9 @@ func _process(delta: float) -> bool:
 			game.buy_food("artemia")
 			game.buy_offer(0)
 			game.buy_tank(2)
+			game.buy_theme("navidad")
+			game.buy_style("backdrop", "rocas")
+			shop.tab = 5
 			shop._build()
 		2:
 			hud.open_fish(-1)

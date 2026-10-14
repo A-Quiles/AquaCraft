@@ -217,12 +217,38 @@ func _init() -> void:
 	game.switch_tank(0)
 	check(game.water_kind == "dulce" and game.fish.has(moving), "volver a la primera")
 	check(game.move_fish(int(moving.id), 1) != "", "un pez de agua dulce no se muda a una salada")
+
+	# Estilo: piezas sueltas, temas, por pecera y guardado.
+	check(game.style == Catalog.STYLE_DEFAULT and game.owns_style("wall", "clasica") and not game.owns_style("wall", "ladrillo"), "estilo de serie al empezar")
+	game.set_style("wall", "ladrillo")
+	check(game.style.wall == "clasica", "no se puede usar una pared sin comprarla")
+	game.buy_style("wall", "navidad")
+	check(game.style.wall == "clasica", "las piezas de tema no se venden sueltas")
+	var c1: int = game.coins
+	game.buy_style("wall", "ladrillo")
+	check(game.style.wall == "ladrillo" and game.coins == c1 - int(Catalog.WALLS.ladrillo.price), "comprar una pared la pone")
+	game.buy_style("wall", "clasica")
+	game.buy_style("wall", "ladrillo")
+	check(game.coins == c1 - int(Catalog.WALLS.ladrillo.price), "lo comprado no se cobra dos veces")
+	c1 = game.coins
+	game.buy_theme("otono")
+	check(game.theme_applied("otono") and game.coins == c1 - game.theme_price("otono") and game.owns_style("backdrop", "otono"), "un tema cambia pared, mueble, fondo y ambiente")
+	game.switch_tank(1)
+	check(game.style.wall == "clasica" and game.owns_style("stand", "otono"), "cada pecera tiene su estilo; lo comprado sirve para todas")
+	game.set_style("stand", "otono")
+	game.switch_tank(0)
+	check(game.theme_applied("otono"), "volver a la primera conserva su tema")
+	for t in Catalog.THEMES:
+		for k in ["wall", "stand", "backdrop"]:
+			check(Catalog.style_items(k).has(t), "el tema %s tiene %s" % [t, k])
+
 	game.save_path = "user://test_save.json"
 	game.save_game()
 	var game2: Node = load("res://scripts/game.gd").new()
 	game2._build_weights()
 	game2.save_path = "user://test_save.json"
 	check(game2.load_game() and game2.tanks.size() == 2 and game2.fish.size() == game.fish.size(), "el guardado conserva las dos peceras")
+	check(game2.theme_applied("otono") and game2.tanks[1].style.stand == "otono" and "wall:ladrillo" in game2.owned_styles, "el guardado conserva estilos y compras")
 	game2.free()
 
 	# Avisos para cuando la app está cerrada.

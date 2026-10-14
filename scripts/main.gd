@@ -31,6 +31,8 @@ var sculpt := false                  ## Decorar → moldear la arena
 var _feed_cd := 0.0
 var _night := 0.0
 var _night_acc := 999.0
+var _blink := 0                      ## luces de la guirnalda navideña
+var _blink_acc := 0.0
 const ZOOM_MAX := 2.6                ## acercar con dos dedos, como una foto
 var cam: Camera2D
 var _touches := {}                   ## dedo → posición en pantalla
@@ -213,6 +215,12 @@ func _save_shot() -> void:
 
 func _process(dt: float) -> void:
 	_feed_cd = maxf(0.0, _feed_cd - dt)
+	if Game.style.ambience == "navidad":
+		_blink_acc += dt
+		if _blink_acc > 0.7:
+			_blink_acc = 0.0
+			_blink += 1
+			_furniture.queue_redraw()
 	if Game.equipment.light != "" and Game.condition("light") < 30.0:
 		_frame.queue_redraw()
 	_night_acc += dt
@@ -246,6 +254,7 @@ func _layout() -> void:
 	var r := Rect2(Vector2((vp.x - w) * 0.5, bottom_y - h), Vector2(w, h))
 	_room.size = vp
 	_room.material.set_shader_parameter("size", vp)
+	RoomArt.apply_wall(_room.material, Game.style.wall)
 	_room.material.set_shader_parameter("tank", Vector4(r.position.x, r.position.y, r.size.x, r.size.y))
 	if r != tank_rect:
 		tank_rect = r
@@ -515,62 +524,23 @@ func _draw_furniture() -> void:
 	var top_y := r.end.y + stand_gap()
 	var x0 := 16.0 if Game.tank_tier < 4 else 0.0
 	var x1 := vp.x - x0
-	# Sombra en la pared y encimera
-	ci.draw_rect(Rect2(x0, top_y + 6, x1 - x0, vp.y - top_y), Color(0, 0, 0, 0.25))
-	var plank := Rect2(x0 - 10, top_y, x1 - x0 + 20, 22)
-	ci.draw_rect(plank, Color("b07a4f"))
-	ci.draw_rect(Rect2(plank.position.x, plank.end.y - 6, plank.size.x, 6), Color("8a5a36"))
-	var body := Rect2(x0, plank.end.y, x1 - x0, vp.y - plank.end.y)
-	ci.draw_rect(body, Color("74492c"))
-	for k in 12:
-		var y := body.position.y + 12 + k * 23
-		ci.draw_line(Vector2(body.position.x, y), Vector2(body.end.x, y + 4), Color(0, 0, 0, 0.06), 2.0)
-	var doors := 2 if body.size.x < 600 else 3
-	var dw := (body.size.x - 28.0) / doors
-	for i in doors:
-		var d := Rect2(body.position.x + 14 + i * dw + 6, body.position.y + 16, dw - 12, body.size.y - 10)
-		ci.draw_rect(d, Color("82522f"))
-		ci.draw_rect(d, Color("5e3a22"), false, 3.0)
-		ci.draw_circle(Vector2(d.end.x - 22 if i % 2 == 0 else d.position.x + 22, d.position.y + 44), 7, Color("e6b85c"))
+	RoomArt.stand(ci, x0, x1, top_y, vp.y, Game.style.stand)
+	if Game.style.ambience == "navidad":
+		RoomArt.snow(ci, x0 - 10, x1 + 10, top_y)
 	ci.draw_colored_polygon(DecorArt.ell(Vector2(r.get_center().x, top_y + 2), r.size.x * 0.55, 8), Color(0, 0, 0, 0.18))
-	# Atrezo sobre el mueble si sobra sitio a los lados
+	# Atrezo sobre el mueble si sobra sitio a los lados (cambia con el ambiente).
 	var side := r.position.x - x0
 	if side > 70.0:
-		var bx := x0 + side * 0.45
-		for k in 3:
-			var bw := 68.0 - k * 8.0
-			ci.draw_rect(Rect2(bx - bw * 0.5 + k * 3, top_y - 16 - k * 16, bw, 16), [Color("e76f51"), Color("2a9d8f"), Color("e9c46a")][k])
-			ci.draw_rect(Rect2(bx - bw * 0.5 + k * 3, top_y - 10 - k * 16, bw, 2), Color(1, 1, 1, 0.5))
-		var px := x1 - side * 0.45
-		var pot := PackedVector2Array([Vector2(px - 24, top_y - 44), Vector2(px + 24, top_y - 44), Vector2(px + 17, top_y), Vector2(px - 17, top_y)])
-		for i in 7:
-			DecorArt.leaf(ci, Vector2(px, top_y - 40), lerpf(-1.1, 1.1, i / 6.0), 52.0 - absf(i - 3) * 6.0, 18.0, Color("2e7d4f"), Color("6fcf8a"), 0.12)
-		ci.draw_colored_polygon(pot, Color("d9774e"))
-		ci.draw_rect(Rect2(px - 27, top_y - 50, 54, 10), Color("c4633d"))
+		RoomArt.side_props(ci, Game.style.ambience, x0 + side * 0.45, x1 - side * 0.45, top_y)
 
 
-## Pared: cuadro con un pez y estante con atrezo, solo si queda sitio sobre la pecera.
+## Pared: guirnalda del ambiente y cuadro, solo si queda sitio sobre la pecera.
 func _draw_wall(ci: Node2D, vp: Vector2, r: Rect2) -> void:
 	var top := Hud.safe_margins().x + 200.0
+	RoomArt.garland(ci, -10.0, vp.x + 10.0, top - 26.0, Game.style.ambience, _blink)
 	if r.position.y - top < 165.0:
 		return
-	# Cuadro
-	var fr := Rect2(vp.x * 0.07, top + 20.0, 150.0, 116.0)
-	ci.draw_rect(Rect2(fr.position + Vector2(5, 7), fr.size), Color(0, 0, 0, 0.18))
-	ci.draw_rect(fr, Color("8a5a36"))
-	var mat := fr.grow(-10)
-	ci.draw_rect(mat, Color("fff3df"))
-	var art := mat.grow(-9)
-	ci.draw_rect(art, Color("9fdde6"))
-	ci.draw_rect(Rect2(art.position + Vector2(0, art.size.y * 0.72), Vector2(art.size.x, art.size.y * 0.28)), Color("f1d39a"))
-	var fc := art.get_center() + Vector2(6, -4)
-	ci.draw_colored_polygon(PackedVector2Array([fc + Vector2(-18, 0), fc + Vector2(-38, -16), fc + Vector2(-38, 16)]), Color("ff8a5b"))
-	ci.draw_colored_polygon(DecorArt.ell(fc, 26, 16), Color("ffa26b"))
-	ci.draw_circle(fc + Vector2(14, -4), 3.5, Color("1d3557"))
-	for b in [Vector2(30, -18), Vector2(38, -30), Vector2(33, -42)]:
-		ci.draw_arc(fc + b, 4.0, 0, TAU, 12, Color(1, 1, 1, 0.9), 1.6, true)
-	DecorArt.blade(ci, art.position + Vector2(14, art.size.y), 46, 7, 6, Color("2e7d4f"), Color("6fcf8a"), 6)
-	DecorArt.blade(ci, art.position + Vector2(22, art.size.y), 34, 6, -5, Color("2e7d4f"), Color("8fe3a0"), 6)
+	RoomArt.picture(ci, Rect2(vp.x * 0.07, top + 20.0, 150.0, 116.0), Game.style.ambience)
 
 
 # ───────────────────────── Estantería de cuidados ─────────────────────────
@@ -617,6 +587,8 @@ func _draw_props() -> void:
 		ci.draw_colored_polygon(PackedVector2Array([Vector2(bx, sy + 10), Vector2(bx + 8, sy + 10), Vector2(bx + 8, sy + 34)]), Color("6b4428"))
 	ci.draw_rect(Rect2(sx, sy, sw, 12), Color("b07a4f"))
 	ci.draw_rect(Rect2(sx, sy + 9, sw, 3), Color("8a5a36"))
+	if Game.style.ambience == "navidad":
+		RoomArt.snow(ci, sx, sx + sw, sy)
 	var font := UI.bold
 	for i in SHELF_ITEMS.size():
 		var key: String = SHELF_ITEMS[i]
@@ -675,6 +647,8 @@ func _draw_frame() -> void:
 	var lid := Rect2(r.position.x - 10, r.position.y - 30, r.size.x + 20, 30)
 	ci.draw_rect(lid, dark)
 	ci.draw_rect(Rect2(lid.position, Vector2(lid.size.x, 6)), dark.lightened(0.2))
+	if Game.style.ambience == "navidad":
+		RoomArt.snow(ci, lid.position.x, lid.end.x, lid.position.y)
 	var led := 0.6
 	if Game.equipment.light != "":
 		# Se apaga poco a poco y parpadea cuando la tapa está muy sucia.
