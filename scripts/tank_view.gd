@@ -28,6 +28,8 @@ var _sub: ColorRect
 var _detritus: Node2D                ## suciedad del fondo (se aspira con el sifón)
 var _equip: Node2D
 var _eq_acc := 0.0
+var _drip_k := 0
+var quality := 2                     ## 2 alta · 1 media · 0 baja: main.gd la baja sola si los FPS caen
 var _mid: Node2D
 var _eggs: Node2D
 var _fish_layer: Node2D
@@ -219,7 +221,13 @@ func set_render_zoom(z: float) -> void:
 
 func _frame_stage() -> void:
 	var px := get_viewport().get_final_transform().get_scale().x if is_inside_tree() else 1.0
-	stage.frame(size, clampf(px * _zoom, 1.0, 2.6))
+	stage.frame(size, clampf(px * _zoom * [0.6, 0.8, 1.0][quality], 1.0 if quality == 2 else 0.5, 2.6))
+
+
+func set_quality(q: int) -> void:
+	quality = clampi(q, 0, 2)
+	stage.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][quality]
+	_frame_stage()
 
 
 func set_night(n: float) -> void:
@@ -231,8 +239,13 @@ func set_night(n: float) -> void:
 func _process(dt: float) -> void:
 	if editing or not Game.needs_maintenance().is_empty() or Game.equipment.thermo != "":
 		_top.queue_redraw()
+	var dk := int(Time.get_ticks_msec() / 1250.0)   # misma cadencia que la gota de la reposición
+	if dk != _drip_k:
+		_drip_k = dk
+		if Game.equipment.ato != "":
+			Sfx.play("drip", 600, -10.0)
 	_eq_acc += dt
-	if _eq_acc > 1.0 / 30.0:   # los aparatos están animados: ~30 fps bastan
+	if _eq_acc > [1.0 / 12.0, 1.0 / 20.0, 1.0 / 30.0][quality]:   # los aparatos están animados: pocos fps bastan
 		_eq_acc = 0.0
 		_equip.queue_redraw()
 	if not Game.eggs.is_empty():
@@ -460,7 +473,7 @@ func decor_rect(i: int) -> Rect2:
 ## Aparato bajo el dedo ("" si ninguno). Incluye la tapa (luz) por encima del agua.
 func equipment_at(p: Vector2) -> String:
 	for slot in ["thermo", "ato", "filter", "heater", "pump", "light"]:
-		if equip_rects.has(slot) and (equip_rects[slot] as Rect2).grow(10.0).has_point(p):
+		if equip_rects.has(slot) and (equip_rects[slot] as Rect2).grow(22.0).has_point(p):
 			return slot
 	return ""
 
@@ -560,7 +573,6 @@ func _draw_equipment() -> void:
 		ci.draw_colored_polygon(DecorArt.ell(p + Vector2(0, -4 * u), 14 * u, 4 * u), stone.lightened(0.25))
 		for k in 5:
 			ci.draw_circle(p + Vector2((k - 2) * 5 * u, -4 * u + (k % 2) * u), 0.9 * u, stone.darkened(0.45))
-		EquipArt.bubbles(ci, p + Vector2(0, -5 * u), 28 * u, t, 5, 0.85 * (1.0 - w * 0.7), 10 * u)
 		equip_rects["pump"] = Rect2(p - Vector2(18, 14) * u, Vector2(36, 22) * u)
 		_grime(ci, Rect2(p - Vector2(12, 6) * u, Vector2(24, 9) * u), w, 11)
 	if e.heater != "":

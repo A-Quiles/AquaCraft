@@ -4,20 +4,20 @@ extends Control
 ## solo cuando el jugador lo hace (no bloquea los toques: el foco es solo visual).
 
 const STEPS := [
-	{"text": "¡Hola! Te enseño lo básico en un minuto: alimentar, limpiar, mantener el equipo, criar y decorar.", "wait": "button", "button": "¡Vamos!"},
-	{"text": "Tus peces tienen hambre: el bocadillo dice qué comida quieren. Toca el bote «Comida» de la estantería para cogerlo.", "target": "prop:food", "wait": "mode_feed"},
-	{"text": "Toca el agua para echar escamas. Ojo: algunos peces solo comen un alimento, y lo que sobra se pudre y ensucia.", "target": "tank", "wait": "fed"},
-	{"text": "Con el tiempo salen algas en el cristal, poco a poco. Coge el limpiacristales de la estantería…", "target": "prop:sponge", "wait": "mode_clean", "care": true},
-	{"text": "…y frota el cristal con el dedo hasta que brille.", "target": "tank", "wait": "cleaned", "care": true},
-	{"text": "El fondo también se ensucia despacio con restos de comida. Con el «Sifón» de la estantería lo aspiras pasándolo por la arena.", "wait": "button", "button": "Entendido", "care": true},
-	{"text": "Tu pecera redonda no trae aparatos. Abre la Tienda → Equipo y compra un filtro básico: es barato, pero se gasta antes.", "target": "bar:shop", "wait": "filter", "care": true, "free_sheet": true},
-	{"text": "Cada aparato se desgasta: cuando veas un aviso «!», tócalo y mantén pulsado para limpiarlo. Los básicos se rompen si llegan a 0%.", "wait": "button", "button": "Entendido", "care": true},
-	{"text": "Si un pez tiene molestias, su ficha te dice qué hacer; el bote «Agua» trae pH+, pH−, oxígeno y antialgas. Ahora, para criar, abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
-	{"text": "Dos adultos de la misma especie, sanos y felices, ponen un huevo. Las crías heredan colores, patrón y mutaciones: ¡los raros valen mucho más!", "wait": "button", "button": "Entendido"},
+	{"text": "¡Hola! Un minuto para lo básico: alimentar, limpiar, criar y decorar.", "wait": "button", "button": "¡Vamos!"},
+	{"text": "Tus peces tienen hambre. Toca el bote «Comida» de la estantería.", "target": "prop:food", "wait": "mode_feed"},
+	{"text": "Toca el agua para echar comida. Lo que sobra se pudre, ¡no te pases!", "target": "tank", "wait": "fed"},
+	{"text": "Salen algas en el cristal. Coge el limpiacristales…", "target": "prop:sponge", "wait": "mode_clean", "care": true},
+	{"text": "…y frota el cristal con el dedo.", "target": "tank", "wait": "cleaned", "care": true},
+	{"text": "El fondo también se ensucia: el «Sifón» lo aspira pasándolo por la arena.", "wait": "button", "button": "Entendido", "care": true},
+	{"text": "Tu pecera no trae aparatos. Abre la Tienda → Equipo y compra un filtro básico.", "target": "bar:shop", "wait": "filter", "care": true, "free_sheet": true},
+	{"text": "Los aparatos se desgastan: si ves un «!», tócalo y mantén pulsado para limpiarlo.", "wait": "button", "button": "Entendido", "care": true},
+	{"text": "Si un pez se queja, su ficha dice qué hacer. Ahora, para criar: abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
+	{"text": "Dos adultos sanos de la misma especie ponen un huevo. Las crías heredan colores y mutaciones: ¡los raros valen mucho más!", "wait": "button", "button": "Entendido"},
 	{"text": "¡Tu primer cliente! %s quiere un %s adulto y paga mucho más que la tienda. Abre «Misiones».", "target": "bar:missions", "wait": "orders_open", "order": true},
 	{"text": "Pulsa «Entregar» y elige tu %s. Cada pocas horas llegan pedidos nuevos: así se gana dinero de verdad.", "wait": "order_done", "order": true, "free_sheet": true},
-	{"text": "Por último, pulsa «Decorar»: arrastra plantas, adornos y aparatos donde quieras, o moldea la arena para hacer montañas.","target": "bar:edit", "wait": "mode_edit"},
-	{"text": "Los peces contentos sueltan burbujas con monedas: ¡tócalas! Con dos dedos acercas la pecera como una foto. Y si no sabes qué hacer, el botón amarillo de abajo te lo dice.", "wait": "button", "button": "¡Genial!"},
+	{"text": "Pulsa «Decorar»: arrastra plantas, adornos y aparatos, o moldea la arena.","target": "bar:edit", "wait": "mode_edit"},
+	{"text": "Los peces contentos sueltan burbujas con monedas: ¡tócalas! Si te pierdes, el botón amarillo de abajo te guía.", "wait": "button", "button": "¡Genial!"},
 	{"text": "¡Listo! Las misiones te irán guiando. Disfruta de tu acuario.", "wait": "button", "button": "¡A bucear!"},
 ]
 

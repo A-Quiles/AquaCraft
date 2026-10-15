@@ -920,7 +920,8 @@ func _wear(dt: float) -> void:
 		if slot == "filter":
 			rate *= 0.5 + 0.35 * float(_cache.get("load", 1.0))
 		var before := condition(slot)
-		equip_cond[slot] = maxf(0.0, before - rate * dt / 3600.0)
+		# Fuera de la app los aparatos se gastan, pero nunca se rompen: al volver queda un aviso «!» que arreglar.
+		equip_cond[slot] = maxf(minf(before, 5.0) if _offline_floor else 0.0, before - rate * dt / 3600.0)
 		if before >= 30.0 and equip_cond[slot] < 30.0 and not _offline_floor:
 			toast.emit("%s necesita mantenimiento" % Catalog.EQUIPMENT[id].name, "gear")
 		# Los aparatos básicos no aguantan el abandono: al llegar a 0 se rompen y hay que comprar otro.

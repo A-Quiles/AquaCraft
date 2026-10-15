@@ -162,6 +162,21 @@ def ambience(sec=12.0):
     return fold(buf, n)
 
 
+def drip():
+    """Gota que cae en el agua (reposición automática)."""
+    t = t_axis(0.25)
+    f = 900 + 1800 * np.exp(-t / 0.03)
+    return np.sin(2 * np.pi * np.cumsum(f) / SR) * env(len(t), 0.001, 0.045)
+
+
+def filter_loop(sec=6.0):
+    """Cascada suave de un filtro: ruido filtrado con ondulación lenta, en bucle."""
+    n = int(SR * sec)
+    noise = highpass(lowpass(rng.normal(0, 1, n + SR), 2400), 500)
+    swell = 0.75 + 0.25 * np.sin(2 * np.pi * np.arange(n + SR) / SR * 0.7)
+    return fold(noise * swell, n)
+
+
 def music():
     """Lo-fi tranquilo: 72 BPM, 16 compases (Fmaj7 Em7 Dm7 Cmaj7 ×4), piano eléctrico, bajo, escobillas y melodía."""
     bpm = 72
@@ -219,6 +234,8 @@ if __name__ == "__main__":
                      ("chime", lambda: arpeggio([72, 76, 79, 84], 0.08, 0.6)), ("levelup", lambda: arpeggio([72, 76, 79, 84, 88, 91], 0.09, 0.9, 0.6)),
                      ("hatch", hatch), ("click", click), ("error", error)]:
         save_wav(name, fn())
+    save_wav("drip", drip())
+    save_ogg("filter", filter_loop(), 0.35)
     save_ogg("ambience", ambience(), 0.5)
     save_ogg("music", music(), 0.7)
     print("audio OK:", sorted(os.listdir(OUT)))

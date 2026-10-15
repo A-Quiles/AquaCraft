@@ -2,12 +2,13 @@ extends Node
 ## Autoload "Sfx": música lo-fi, ambiente de burbujas y efectos (generados con tools/gen_audio.py).
 ## Respeta Game.settings (music / sfx / vibration).
 
-const SOUNDS := ["plop", "bubble", "squeak", "slurp", "coin", "chime", "levelup", "hatch", "click", "error"]
+const SOUNDS := ["plop", "bubble", "squeak", "slurp", "coin", "chime", "levelup", "hatch", "click", "error", "drip"]
 
 var _streams := {}
 var _pool: Array[AudioStreamPlayer] = []
 var _music: AudioStreamPlayer
 var _amb: AudioStreamPlayer
+var _filter: AudioStreamPlayer       ## murmullo del filtro: solo suena si hay filtro y según su estado
 var _last := {}                      ## nombre → ms del último disparo (evita ametrallar)
 
 
@@ -21,6 +22,7 @@ func _ready() -> void:
 		_pool.append(p)
 	_music = _loop("res://assets/audio/music.ogg", -9.0)
 	_amb = _loop("res://assets/audio/ambience.ogg", -14.0)
+	_filter = _loop("res://assets/audio/filter.ogg", -80.0)
 	apply_settings.call_deferred()
 
 
@@ -46,6 +48,16 @@ func apply_settings() -> void:
 		_amb.play()
 	elif not game.settings.sfx:
 		_amb.stop()
+	if game.settings.sfx and not _filter.playing:
+		_filter.play()
+	elif not game.settings.sfx:
+		_filter.stop()
+	set_filter(game.equipment.get("filter", "") != "", game.efficiency("filter") if game.equipment.get("filter", "") != "" else 0.0)
+
+
+## Murmullo del filtro: más flojo cuanto más sucio; en silencio si no hay filtro.
+func set_filter(on: bool, eff: float) -> void:
+	_filter.volume_db = lerpf(-30.0, -19.0, eff) if on else -80.0
 
 
 ## Efecto con un poco de variación de tono. min_gap_ms: separación mínima entre repeticiones.

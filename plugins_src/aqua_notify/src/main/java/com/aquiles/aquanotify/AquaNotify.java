@@ -7,7 +7,11 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.ContentValues;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.MediaStore;
+import java.io.OutputStream;
 
 import org.godotengine.godot.Godot;
 import org.godotengine.godot.plugin.GodotPlugin;
@@ -69,5 +73,39 @@ public class AquaNotify extends GodotPlugin {
         if (a.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             a.requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 4711);
         }
+    }
+
+    /** Guarda el PNG en Imágenes/AquaCraft (sin permisos, Android 10+) y abre el menú de compartir; en versiones viejas comparte solo el texto. */
+    @UsedByGodot
+    public void sharePng(byte[] png, String text) {
+        Activity a = getActivity();
+        if (a == null) return;
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.putExtra(Intent.EXTRA_TEXT, text);
+        send.setType("text/plain");
+        if (png != null && png.length > 0 && Build.VERSION.SDK_INT >= 29) {
+            try {
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.Images.Media.DISPLAY_NAME, "aquacraft_" + System.currentTimeMillis() + ".png");
+                v.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+                v.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/AquaCraft");
+                Uri uri = a.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                if (uri != null) {
+                    OutputStream os = a.getContentResolver().openOutputStream(uri);
+                    if (os != null) {
+                        os.write(png);
+                        os.close();
+                        send.setType("image/png");
+                        send.putExtra(Intent.EXTRA_STREAM, uri);
+                        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    }
+                }
+            } catch (Exception e) {
+                send.setType("text/plain");
+            }
+        }
+        Intent chooser = Intent.createChooser(send, null);
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        a.startActivity(chooser);
     }
 }

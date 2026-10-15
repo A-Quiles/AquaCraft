@@ -19,6 +19,8 @@ var _room: ColorRect
 var _furniture: Node2D
 var _stand: Node2D                   ## mueble con veta de madera (wood.gdshader)
 var _frame: Node2D
+var _fps_acc := 0.0
+var _fps_n := 0
 var _bowl_mask: Node2D               ## pinta la pared encima de lo que asoma fuera de la pecera redonda
 var _props: Node2D
 var prop_rects := {}                 ## nombre → Rect2 de los objetos de la estantería
@@ -85,6 +87,7 @@ func _ready() -> void:
 	Game.tank_changed.connect(_layout)
 	Game.changed.connect(_frame.queue_redraw)
 	Game.changed.connect(_props.queue_redraw)
+	Game.changed.connect(Sfx.apply_settings)
 	_layout()
 	if Game._arg("promo") != "":
 		_promo.call_deferred()
@@ -93,6 +96,22 @@ func _ready() -> void:
 
 
 ## Captura para la ficha de la tienda / revisión visual: `-- demo=2 open=shop:3 shot=out.png`
+## Foto de la pecera sin interfaz: el menú de compartir en Android; en otros sitios se guarda en user://.
+func share_photo() -> void:
+	hud.visible = false
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	hud.visible = true
+	var png := img.save_png_to_buffer()
+	var n := Game._notifier()
+	if n and n.has_method("sharePng"):
+		n.sharePng(png, "¡Mira mi pecera en AquaCraft! 🐠")
+	else:
+		img.save_png("user://foto_pecera.png")
+		Game.toast.emit("Foto guardada", "sparkle")
+
+
 func _screenshot() -> void:
 	var open := Game._arg("open")
 	await get_tree().create_timer(0.6).timeout
@@ -228,6 +247,14 @@ func _save_shot() -> void:
 
 
 func _process(dt: float) -> void:
+	# Calidad automática: si la media de FPS de 4 s es baja, se baja un escalón (nunca vuelve a subir en la sesión).
+	_fps_acc += dt
+	_fps_n += 1
+	if _fps_acc >= 4.0:
+		if _fps_n / _fps_acc < 40.0 and tank.quality > 0 and not OS.has_feature("headless"):
+			tank.set_quality(tank.quality - 1)
+		_fps_acc = 0.0
+		_fps_n = 0
 	_feed_cd = maxf(0.0, _feed_cd - dt)
 	if Game.style.ambience == "navidad":
 		_blink_acc += dt

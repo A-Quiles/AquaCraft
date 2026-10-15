@@ -100,12 +100,16 @@ func _build_top() -> void:
 	_pearls = _currency(row, "pearl", func(): open_missions())
 	var gear := Button.new()
 	gear.focus_mode = Control.FOCUS_NONE
-	gear.custom_minimum_size = Vector2(56, 56)
+	gear.custom_minimum_size = Vector2(76, 76)
 	gear.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	for st in ["normal", "hover", "pressed"]:
 		gear.add_theme_stylebox_override(st, _glass(28))
-	var gi := VIcon.make("gear", 32)
-	gi.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	var gi := VIcon.make("gear", 36)
+	gi.set_anchors_preset(Control.PRESET_CENTER)
+	gi.offset_left = -18
+	gi.offset_top = -18
+	gi.offset_right = 18
+	gi.offset_bottom = 18
 	gear.add_child(gi)
 	gear.pressed.connect(open_settings)
 	row.add_child(gear)
@@ -936,6 +940,11 @@ func open_settings() -> void:
 		m.close()
 		open_mode_picker())
 	m.box.add_child(modes)
+	var photo := UI.button("Compartir foto de mi pecera", UI.TEAL, UI.TEAL_D)
+	photo.pressed.connect(func():
+		m.close()
+		main.share_photo())
+	m.box.add_child(photo)
 	var tut := UI.button("Repetir el tutorial", UI.SAND, UI.SAND_D)
 	tut.add_theme_color_override("font_color", UI.NAVY)
 	tut.pressed.connect(func():
