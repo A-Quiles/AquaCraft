@@ -235,7 +235,7 @@ func _process(dt: float) -> void:
 			_blink_acc = 0.0
 			_blink += 1
 			_furniture.queue_redraw()
-	if Game.equipment.light != "" and Game.condition("light") < 30.0:
+	if Game.equipment.light != "":
 		_frame.queue_redraw()
 	_night_acc += dt
 	if _night_acc > 30.0:
@@ -667,8 +667,10 @@ func _draw_frame() -> void:
 	var wood := Game.tank_tier == 4
 	var dark := Color("6b4428") if wood else Color("22303c")
 	var lid := Rect2(r.position.x - 10, r.position.y - 30, r.size.x + 20, 30)
-	ci.draw_rect(lid, dark)
-	ci.draw_rect(Rect2(lid.position, Vector2(lid.size.x, 6)), dark.lightened(0.2))
+	# Sombra de la tapa sobre el agua y cuerpo con degradado.
+	for k in 5:
+		ci.draw_rect(Rect2(r.position.x, r.position.y + k * 3, r.size.x, 3), Color(0, 0.05, 0.1, 0.22 * (1.0 - k / 5.0)))
+	EquipArt.body(ci, lid, dark, 5.0, false)
 	if Game.style.ambience == "navidad":
 		RoomArt.snow(ci, lid.position.x, lid.end.x, lid.position.y)
 	var led := 0.6
@@ -679,6 +681,10 @@ func _draw_frame() -> void:
 		if Game.condition("light") < 30.0 and fmod(Time.get_ticks_msec() / 90.0, 7.0) < 1.0:
 			led *= 0.3
 	ci.draw_rect(Rect2(r.position.x + 12, r.position.y - 6, r.size.x - 24, 4), Color(0.85, 1.0, 1.0, 0.9 * led))
+	if Game.equipment.light != "":   # destello que recorre la tira LED
+		var sx := r.position.x + 12.0 + fposmod(Time.get_ticks_msec() / 2600.0, 1.0) * (r.size.x - 24.0)
+		for k in 3:
+			ci.draw_rect(Rect2(sx - 30.0 + k * 6.0, r.position.y - 6, 60.0 - k * 12.0, 4), Color(1, 1, 1, 0.18 * led))
 	for k in 4:
 		ci.draw_rect(Rect2(r.position.x + 12, r.position.y - 2 + k * 3, r.size.x - 24, 3), Color(0.7, 1.0, 1.0, 0.12 * led * (1.0 - k / 4.0)))
 	ci.draw_rect(Rect2(r.position.x - 10, r.end.y, r.size.x + 20, 16), dark)

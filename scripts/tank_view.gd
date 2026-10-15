@@ -27,6 +27,7 @@ var _back: Node2D
 var _sub: ColorRect
 var _detritus: Node2D                ## suciedad del fondo (se aspira con el sifón)
 var _equip: Node2D
+var _eq_acc := 0.0
 var _mid: Node2D
 var _eggs: Node2D
 var _fish_layer: Node2D
@@ -227,9 +228,13 @@ func set_night(n: float) -> void:
 	_glass.material.set_shader_parameter("night", n)
 
 
-func _process(_dt: float) -> void:
-	if editing or not Game.needs_maintenance().is_empty() or Game.equipment.thermo == "digital":
+func _process(dt: float) -> void:
+	if editing or not Game.needs_maintenance().is_empty() or Game.equipment.thermo != "":
 		_top.queue_redraw()
+	_eq_acc += dt
+	if _eq_acc > 1.0 / 30.0:   # los aparatos están animados: ~30 fps bastan
+		_eq_acc = 0.0
+		_equip.queue_redraw()
 	if not Game.eggs.is_empty():
 		_eggs.queue_redraw()
 	if _algae_dirty:
@@ -535,6 +540,8 @@ func _draw_equipment() -> void:
 	var ci := _equip
 	var e: Dictionary = Game.equipment
 	var u := decor_scale()
+	var t := Time.get_ticks_msec() / 1000.0
+	var pulse := 0.5 + 0.5 * sin(t * 3.0)
 	equip_rects.clear()
 	if "light" in Catalog.TANKS[Game.tank_tier].equip:
 		equip_rects["light"] = Rect2(0, -34, size.x, 34)
@@ -542,19 +549,40 @@ func _draw_equipment() -> void:
 	if e.pump != "":
 		var x := equip_x("pump") * size.x
 		var p := Vector2(x, surface_y(x) - 4.0)
-		ci.draw_line(p, Vector2(p.x - 10, 0), Color(0.85, 0.95, 0.95, 0.35), 2.5 * u, true)
-		var stone := Color(0.75, 0.78, 0.82).lerp(Color(0.38, 0.32, 0.18), wear.call("pump"))
-		ci.draw_colored_polygon(DecorArt.ell(p, 14 * u, 6 * u), stone.darkened(0.25))
-		ci.draw_colored_polygon(DecorArt.ell(p + Vector2(0, -2), 12 * u, 3 * u), stone)
+		var w: float = wear.call("pump")
+		var stone := Color(0.75, 0.78, 0.82).lerp(Color(0.38, 0.32, 0.18), w)
+		EquipArt.hose(ci, PackedVector2Array([p, Vector2(p.x + 5, p.y * 0.5), Vector2(p.x - 10, 0)]), 2.5 * u, Color(0.8, 0.93, 0.95, 0.5))
+		for k in 3:   # burbujas de aire subiendo por la manguera
+			var ph := fposmod(t * 0.9 + k / 3.0, 1.0)
+			ci.draw_circle(p.lerp(Vector2(p.x - 10, 0), ph), 1.2 * u, Color(1, 1, 1, 0.7 * (1.0 - w)))
+		ci.draw_colored_polygon(DecorArt.ell(p + Vector2(0, 3 * u), 15 * u, 6 * u), Color(0, 0.03, 0.06, 0.28))
+		EquipArt.tube(ci, Rect2(p.x - 14 * u, p.y - 4 * u, 28 * u, 7 * u), stone, false)
+		ci.draw_colored_polygon(DecorArt.ell(p + Vector2(0, -4 * u), 14 * u, 4 * u), stone.lightened(0.25))
+		for k in 5:
+			ci.draw_circle(p + Vector2((k - 2) * 5 * u, -4 * u + (k % 2) * u), 0.9 * u, stone.darkened(0.45))
+		EquipArt.bubbles(ci, p + Vector2(0, -5 * u), 28 * u, t, 5, 0.85 * (1.0 - w * 0.7), 10 * u)
 		equip_rects["pump"] = Rect2(p - Vector2(18, 14) * u, Vector2(36, 22) * u)
-		_grime(ci, Rect2(p - Vector2(12, 6) * u, Vector2(24, 9) * u), wear.call("pump"), 11)
+		_grime(ci, Rect2(p - Vector2(12, 6) * u, Vector2(24, 9) * u), w, 11)
 	if e.heater != "":
 		var r := Rect2(equip_x("heater") * size.x - 6.5 * u, size.y * 0.06, 13 * u, size.y * (0.26 if e.heater == "calentador_mini" else 0.42))
 		var w: float = wear.call("heater")
-		ci.draw_rect(r, Color(0.8, 0.95, 1.0, 0.28))
 		var on := Game.water_temp < Game._temp_target() - 0.1
-		ci.draw_rect(Rect2(r.position + Vector2(4 * u, 20 * u), Vector2(5 * u, r.size.y - 30 * u)), Color(1.0, 0.45, 0.2, (0.85 if on else 0.3) * (1.0 - w * 0.6)))
-		ci.draw_rect(Rect2(r.position, Vector2(r.size.x, 16 * u)), Color(0.15, 0.17, 0.2))
+		var cx := r.get_center().x
+		if on:   # resplandor cálido que late
+			for i in 3:
+				ci.draw_colored_polygon(EquipArt.rpoly(Rect2(r.position.x, r.position.y + 14 * u, r.size.x, r.size.y - 14 * u).grow((4 + i * 5) * u), 10 * u),
+					Color(1.0, 0.5, 0.2, (0.05 + 0.03 * pulse) * (1.0 - w * 0.6)))
+		EquipArt.tube(ci, Rect2(r.position.x, r.position.y + 12 * u, r.size.x, r.size.y - 12 * u), Color(0.8, 0.95, 1.0, 0.3))
+		var el := Rect2(cx - 2.5 * u, r.position.y + 22 * u, 5 * u, r.size.y - 32 * u)
+		var heat := (0.8 + 0.2 * pulse) if on else 0.3
+		ci.draw_rect(el, Color(1.0, 0.42, 0.18, heat * (1.0 - w * 0.6)))
+		ci.draw_rect(Rect2(el.position.x + el.size.x * 0.3, el.position.y, el.size.x * 0.4, el.size.y), Color(1.0, 0.9, 0.5, (0.9 if on else 0.15) * (1.0 - w * 0.6)))
+		for k in int(el.size.y / (6 * u)):
+			ci.draw_line(Vector2(el.position.x, el.position.y + k * 6 * u), Vector2(el.end.x, el.position.y + k * 6 * u), Color(0.3, 0.1, 0.05, 0.3), 1.0)
+		if on:   # agua caliente subiendo
+			EquipArt.bubbles(ci, Vector2(cx, el.end.y), el.size.y, t * 0.8, 5, 0.35, 16 * u, Color(1.0, 0.85, 0.6))
+		EquipArt.body(ci, Rect2(r.position + Vector2(-1.5 * u, 0), Vector2(r.size.x + 3 * u, 16 * u)), Color(0.2, 0.22, 0.26), 4 * u)
+		ci.draw_circle(Vector2(cx, r.position.y + 8 * u), 2.2 * u, (Color(1.0, 0.3, 0.2) if on else Color(0.3, 0.95, 0.5)).lightened(0.2 * pulse))
 		# Cal: costra blanquecina que va cubriendo el tubo.
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 5
@@ -562,57 +590,104 @@ func _draw_equipment() -> void:
 			ci.draw_circle(r.position + Vector2(rng.randf() * r.size.x, 16 * u + rng.randf() * (r.size.y - 16 * u)), rng.randf_range(2, 4.5) * u, Color(0.95, 0.94, 0.88, 0.75))
 		equip_rects["heater"] = r
 	var dirty: float = wear.call("filter")
+	var fl := 1.0 - dirty
 	var fx := equip_x("filter") * size.x
 	match e.filter:
 		"filtro_mini":
 			# Mini cascada colgada del borde: caja pequeña, chorrito y tubo de aspiración.
 			var r := Rect2(fx - 20 * u, -10 * u, 40 * u, 30 * u)
-			ci.draw_rect(Rect2(fx - 4 * u, r.end.y, 8 * u, size.y * 0.3), Color(0.22, 0.24, 0.27, 0.9))
-			ci.draw_rect(r, Color(0.2, 0.55, 0.62))
-			ci.draw_rect(Rect2(r.position, Vector2(r.size.x, 6 * u)), Color(0.28, 0.68, 0.75))
-			ci.draw_rect(Rect2(r.position.x - 6 * u, r.position.y + 10 * u, 6 * u, (8 + 22 * (1.0 - dirty)) * u), Color(0.85, 0.95, 1.0, 0.5 * (1.0 - dirty)))
+			var tb := Rect2(fx - 4 * u, r.end.y - 4 * u, 8 * u, size.y * 0.3)
+			EquipArt.tube(ci, tb, Color(0.22, 0.24, 0.27, 0.92))
+			for k in 7:
+				ci.draw_line(tb.position + Vector2(1.5 * u, 10 * u + k * 6 * u), tb.position + Vector2(tb.size.x - 1.5 * u, 10 * u + k * 6 * u), Color(0, 0, 0, 0.45), 1.2)
+			EquipArt.body(ci, r, Color(0.2, 0.55, 0.62), 6 * u)
+			for k in 4:
+				ci.draw_line(r.position + Vector2(8 + k * 5, 12) * u, r.position + Vector2(8 + k * 5, 24) * u, Color(0, 0.1, 0.15, 0.4), 1.5, true)
+			ci.draw_circle(r.position + Vector2(r.size.x - 7 * u, 17 * u), 2.0 * u, Color(0.3, 1.0, 0.55).lerp(Color(1.0, 0.6, 0.2), dirty).lightened(0.25 * pulse))
+			EquipArt.body(ci, Rect2(r.position.x - 8 * u, r.position.y + 8 * u, 10 * u, 5 * u), Color(0.3, 0.7, 0.77), 2 * u, false)
+			EquipArt.stream(ci, r.position.x - 4 * u, r.position.y + 13 * u, r.position.y + (28 + 22 * fl) * u, 5 * u, t, fl)
 			_grime(ci, r, dirty, 24)
 			equip_rects["filter"] = Rect2(r.position, Vector2(r.size.x, r.size.y + size.y * 0.3))
 		"esponja":
 			var c := Vector2(fx, surface_y(fx))
-			ci.draw_line(c + Vector2(0, -60 * u), Vector2(c.x, 0), Color(0.85, 0.95, 0.95, 0.4), 3.0 * u, true)
 			var sp := Rect2(c + Vector2(-16, -62) * u, Vector2(32, 58) * u)
-			ci.draw_rect(sp, Color(0.18, 0.2, 0.22).lerp(Color(0.36, 0.3, 0.16), dirty))
-			for k in 6:
-				ci.draw_line(sp.position + Vector2(0, 8 + k * 9) * u, sp.position + Vector2(32, 8 + k * 9) * u, Color(0.28, 0.3, 0.33).lerp(Color(0.42, 0.36, 0.2), dirty), 2.0, true)
+			EquipArt.tube(ci, Rect2(c.x - 2.5 * u, 0, 5 * u, maxf(sp.position.y, 1.0)), Color(0.85, 0.95, 0.95, 0.42), false)
+			EquipArt.bubbles(ci, Vector2(c.x, sp.position.y), sp.position.y, t, 5, 0.9 * fl, 2 * u)
+			ci.draw_colored_polygon(DecorArt.ell(c + Vector2(0, -2 * u), 21 * u, 5 * u), Color(0.12, 0.13, 0.15))
+			var base := Color(0.2, 0.22, 0.25).lerp(Color(0.4, 0.33, 0.16), dirty)
+			EquipArt.body(ci, sp, base, 8 * u)
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 3
+			for k in 26:   # poros de la esponja
+				var q := sp.position + Vector2(rng.randf(), rng.randf()) * sp.size
+				var pr := rng.randf_range(1.2, 2.6) * u
+				ci.draw_circle(q, pr, base.darkened(0.55))
+				ci.draw_circle(q + Vector2(-0.5, -0.6) * u, pr * 0.5, base.lightened(0.3))
 			_grime(ci, sp, dirty, 21)
 			equip_rects["filter"] = sp
 		"mochila":
 			var r := Rect2(fx - 35 * u, -6, 70 * u, 64 * u)
-			ci.draw_rect(r, Color(0.16, 0.18, 0.2))
+			var tb := Rect2(r.position.x + 26 * u, 58 * u, 18 * u, size.y * 0.5)
 			# Cascada de salida: se debilita cuando el cartucho está saturado.
-			ci.draw_rect(Rect2(r.position.x + 8, 52 * u, 54 * u, (10 + 30 * (1.0 - dirty)) * u), Color(0.85, 0.95, 1.0, 0.45 * (1.0 - dirty)))
-			var tube := Rect2(r.position.x + 26 * u, 58 * u, 18 * u, size.y * 0.5)
-			ci.draw_rect(tube, Color(0.2, 0.22, 0.24))
-			_grime(ci, tube, dirty, 22)
+			EquipArt.stream(ci, r.position.x + 35 * u, 56 * u, (64 + 30 * fl) * u, 54 * u, t, fl)
+			EquipArt.tube(ci, tb, Color(0.2, 0.22, 0.24))
+			for k in 8:
+				ci.draw_line(tb.end - Vector2(tb.size.x - 3 * u, 8 * u + k * 5 * u), tb.end - Vector2(3 * u, 8 * u + k * 5 * u), Color(0, 0, 0, 0.45), 1.3)
+			_grime(ci, tb, dirty, 22)
+			EquipArt.body(ci, r, Color(0.2, 0.23, 0.27), 8 * u)
+			for k in 6:   # rejilla de ventilación
+				ci.draw_line(r.position + Vector2(12 + k * 9, 16) * u, r.position + Vector2(12 + k * 9, 40) * u, Color(0, 0, 0, 0.5), 2.5 * u, true)
+				ci.draw_line(r.position + Vector2(13 + k * 9, 16) * u, r.position + Vector2(13 + k * 9, 40) * u, Color(1, 1, 1, 0.1), 1.0, true)
+			ci.draw_circle(r.position + Vector2(r.size.x - 9 * u, 8 * u), 2.2 * u, Color(0.3, 1.0, 0.55).lerp(Color(1.0, 0.6, 0.2), dirty).lightened(0.25 * pulse))
 			equip_rects["filter"] = Rect2(r.position, Vector2(r.size.x, 58 * u + size.y * 0.5))
 		"skimmer":
 			var r := Rect2(fx - 23 * u, size.y * 0.08, 46 * u, size.y * 0.5)
-			ci.draw_rect(r, Color(0.85, 0.92, 0.98, 0.35))
-			# Vaso colector: se llena de espuma marrón.
-			ci.draw_rect(Rect2(r.position + Vector2(6, 6) * u, Vector2(34 * u, r.size.y * 0.25)), Color(0.85, 0.92, 0.98, 0.25))
-			ci.draw_rect(Rect2(r.position + Vector2(6 * u, 6 * u + r.size.y * 0.25 * (1.0 - dirty)), Vector2(34 * u, r.size.y * 0.25 * dirty)), Color(0.45, 0.33, 0.15, 0.85))
-			for k in 8:
-				ci.draw_circle(r.position + Vector2(12 + (k % 3) * 10, r.size.y * (0.38 + k * 0.07)) * Vector2(u, 1), 3.0 * u, Color(1, 1, 1, 0.55 * (1.0 - dirty * 0.7)))
-			ci.draw_rect(Rect2(r.position.x - 4, r.end.y, r.size.x + 8, 14 * u), Color(0.15, 0.17, 0.2))
+			EquipArt.tube(ci, r, Color(0.85, 0.92, 0.98, 0.34))
+			var cup := Rect2(r.position + Vector2(6, 6) * u, Vector2(34 * u, r.size.y * 0.25))
+			ci.draw_rect(cup, Color(0.85, 0.92, 0.98, 0.25))
+			# Vaso colector: se llena de espuma marrón que burbujea.
+			var fy := cup.position.y + cup.size.y * (1.0 - dirty)
+			ci.draw_rect(Rect2(cup.position.x, fy, cup.size.x, cup.size.y * dirty), Color(0.45, 0.33, 0.15, 0.85))
+			for k in 5:
+				ci.draw_circle(Vector2(cup.position.x + (k + 0.5) * cup.size.x / 5.0, fy + sin(t * 2.0 + k) * 1.2), (2.2 + (k % 2)) * u, Color(0.8, 0.65, 0.4, 0.8 * dirty))
+			EquipArt.bubbles(ci, Vector2(r.get_center().x, r.end.y - 6 * u), r.size.y * 0.62, t, 10, 0.75 * (1.0 - dirty * 0.7), 24 * u)
+			EquipArt.body(ci, Rect2(r.position.x - 4, r.end.y, r.size.x + 8, 14 * u), Color(0.2, 0.22, 0.26), 4 * u)
 			equip_rects["filter"] = r
 		"canister":
 			var pipe := Color(0.6, 0.9, 0.75, 0.45).lerp(Color(0.42, 0.4, 0.18, 0.8), dirty)
-			ci.draw_line(Vector2(fx, 0), Vector2(fx, size.y * 0.7), pipe, 9 * u, true)
-			var head := Rect2(fx - 8 * u, size.y * 0.7, 16 * u, 40 * u)
-			ci.draw_rect(head, pipe)
+			var ph := size.y * 0.7
+			var ix := size.x * 0.12
+			EquipArt.tube(ci, Rect2(ix - 4.5 * u, 0, 9 * u, size.y * 0.12), pipe, false)
+			EquipArt.tube(ci, Rect2(fx - 4.5 * u, 0, 9 * u, ph), pipe, false)
+			for k in 8:   # el agua baja por la salida y sube por la entrada
+				var y := fposmod(t * 70.0 * fl + k * ph / 8.0, ph)
+				ci.draw_line(Vector2(fx - 1.5 * u, y), Vector2(fx - 1.5 * u, minf(y + 9, ph)), Color(1, 1, 1, 0.45 * fl), 1.4, true)
+			for k in 3:
+				var y := size.y * 0.12 - fposmod(t * 60.0 * fl + k * size.y * 0.04, size.y * 0.12)
+				ci.draw_line(Vector2(ix - 1.5 * u, y), Vector2(ix - 1.5 * u, y + 7), Color(1, 1, 1, 0.4 * fl), 1.4, true)
+			var head := Rect2(fx - 8 * u, ph, 16 * u, 40 * u)
+			for k in 3:   # chorritos de la barra de salida
+				for sgn in [-1.0, 1.0]:
+					var d := fposmod(t * 55.0 + k * 12.0, 36.0)
+					ci.draw_line(Vector2(fx + sgn * (9 * u + d), ph + 8 * u + k * 12 * u), Vector2(fx + sgn * (9 * u + d + 6), ph + 8 * u + k * 12 * u), Color(1, 1, 1, 0.5 * fl * (1.0 - d / 36.0)), 1.4, true)
+			EquipArt.body(ci, head, pipe.lightened(0.05), 5 * u)
+			for k in 3:
+				ci.draw_circle(head.position + Vector2(head.size.x * 0.5, 8 * u + k * 12 * u), 1.6 * u, Color(0, 0.05, 0.08, 0.6))
 			_grime(ci, head, dirty, 23)
-			ci.draw_line(Vector2(size.x * 0.12, 0), Vector2(size.x * 0.12, size.y * 0.12), pipe, 9 * u, true)
-			equip_rects["filter"] = Rect2(fx - 14 * u, 0, 28 * u, size.y * 0.7 + 40 * u)
+			equip_rects["filter"] = Rect2(fx - 14 * u, 0, 28 * u, ph + 40 * u)
 	if e.ato != "":
 		var p := Vector2(equip_x("ato") * size.x, size.y * 0.035)
-		ci.draw_rect(Rect2(p, Vector2(26 * u, 12 * u)), Color(0.15, 0.17, 0.2))
-		ci.draw_line(p + Vector2(13 * u, 12 * u), p + Vector2(13 * u, 34 * u), Color(0.85, 0.95, 1.0, 0.5 * (1.0 - wear.call("ato"))), 3.0 * u, true)
+		var aw: float = 1.0 - wear.call("ato")
+		EquipArt.tube(ci, Rect2(p.x + 11 * u, p.y + 11 * u, 4 * u, 8 * u), Color(0.5, 0.53, 0.58), false)
+		EquipArt.body(ci, Rect2(p, Vector2(26 * u, 12 * u)), Color(0.2, 0.22, 0.26), 3 * u)
+		ci.draw_circle(p + Vector2(5 * u, 6 * u), 1.7 * u, Color(0.3, 1.0, 0.55, 0.5 + 0.5 * pulse))
+		var dph := fposmod(t * 0.8, 1.0)
+		var dy1 := p.y + 40 * u
+		if dph < 0.85:   # la gota acelera al caer
+			var dp := Vector2(p.x + 13 * u, lerpf(p.y + 20 * u, dy1, dph * dph / 0.7225))
+			ci.draw_colored_polygon(PackedVector2Array([dp + Vector2(0, -4 * u), dp + Vector2(2 * u, 0), dp + Vector2(0, 2.5 * u), dp + Vector2(-2 * u, 0)]), Color(0.8, 0.95, 1.0, 0.8 * aw))
+		else:
+			EquipArt.ripple(ci, Vector2(p.x + 13 * u, dy1), t, 9 * u, 0.5 * aw)
 		equip_rects["ato"] = Rect2(p - Vector2(8, 8), Vector2(42 * u, 48 * u))
 	var tx := equip_x("thermo") * size.x
 	match e.thermo:
@@ -631,7 +706,7 @@ func _draw_top() -> void:
 		var r: Rect2 = equip_rects.thermo
 		if Game.equipment.thermo == "tira":
 			# Tira de cristal líquido: solo se ilumina la casilla más cercana y su número.
-			ci.draw_rect(r, Color(0.08, 0.1, 0.12, 0.9))
+			EquipArt.body(ci, r, Color(0.1, 0.12, 0.15), 4 * u)
 			var t := clampi(roundi(Game.water_temp), 18, 31)
 			var degs := [30, 28, 26, 24, 22, 20, 18]
 			var best := 0
@@ -640,14 +715,19 @@ func _draw_top() -> void:
 					best = k
 			for k in degs.size():
 				var cell := Rect2(r.position + Vector2(3, 4 + k * (r.size.y - 8) / 7.0), Vector2(r.size.x - 6, (r.size.y - 8) / 7.0 - 2))
+				if k == best:
+					var gp := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 350.0)
+					ci.draw_rect(cell.grow(2.0 + gp * 2.0), Color(0.3, 0.95, 0.5, 0.12 + 0.12 * gp))
 				ci.draw_rect(cell, Color(0.3, 0.95, 0.5) if k == best else Color(0.2, 0.25, 0.3))
+				ci.draw_line(cell.position + Vector2(1, 1), Vector2(cell.end.x - 1, cell.position.y + 1), Color(1, 1, 1, 0.3), 1.0)
 				if k == best:
 					var lx := cell.position.x - 38 * u if r.position.x > 50.0 else cell.end.x + 6 * u
 					ci.draw_string(font, Vector2(lx, cell.end.y), "%d°" % t, HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * u), Color.WHITE)
 		else:
 			var batt := Game.condition("thermo") / 100.0
-			ci.draw_rect(r, Color(0.92, 0.94, 0.96))
-			ci.draw_rect(r.grow(-4), Color(0.55, 0.75, 0.6).lerp(Color(0.45, 0.5, 0.47), 1.0 - batt) if batt > 0.0 else Color(0.4, 0.45, 0.42))
+			EquipArt.body(ci, r, Color(0.92, 0.94, 0.96), 7 * u)
+			EquipArt.body(ci, r.grow(-4), Color(0.55, 0.75, 0.6).lerp(Color(0.45, 0.5, 0.47), 1.0 - batt) if batt > 0.0 else Color(0.4, 0.45, 0.42), 4 * u, false)
+			ci.draw_rect(Rect2(r.position + Vector2(5, 5), Vector2(r.size.x - 10, (r.size.y - 10) * 0.4)), Color(1, 1, 1, 0.12))
 			var txt := Game.thermometer_text()
 			ci.draw_string(font, r.position + Vector2(8, r.size.y * 0.72), txt, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 10, int(22 * u), Color(0.08, 0.15, 0.1, 0.25 + 0.75 * minf(1.0, batt * 2.0)))
 			# Pila: icono que se vacía (y parpadea cuando está casi agotada).
