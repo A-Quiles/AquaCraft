@@ -8,6 +8,7 @@ var _pearls: Label
 var _badge: LevelBadge
 var _chips := {}                     ## clave → [label, dot]
 var _toasts: VBoxContainer
+var _toast_box: MarginContainer
 var _bar := {}                       ## clave → Button
 var _mission_dot: Control
 var _hint: PanelContainer
@@ -135,10 +136,24 @@ func _build_top() -> void:
 		_chips[c[0]] = [l, dot, b]
 	v.add_child(chips)
 
+	# Los avisos van en su propia capa, por encima de tienda, fichas, ventanas y tutorial:
+	# si no, un «Pecera llena» lanzado desde la tienda quedaría tapado por ella.
+	var layer := CanvasLayer.new()
+	layer.layer = 10
+	add_child(layer)
+	var tm := MarginContainer.new()
+	tm.theme = theme
+	tm.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	tm.add_theme_constant_override("margin_left", 20)
+	tm.add_theme_constant_override("margin_right", 20)
+	tm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(tm)
+	_toast_box = tm
+	set_toast_top(-1.0)
 	_toasts = UI.vbox(8)
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toasts.alignment = BoxContainer.ALIGNMENT_BEGIN
-	v.add_child(_toasts)
+	tm.add_child(_toasts)
 
 
 func _currency(row: HBoxContainer, icon: String, on_tap: Callable) -> Label:
@@ -391,8 +406,13 @@ func _chip_tip(k: String) -> void:
 
 # ───────────────────────── Avisos ─────────────────────────
 
+## Altura de los avisos (y < 0: bajo la barra superior). El tutorial los baja si su tarjeta está arriba.
+func set_toast_top(y: float) -> void:
+	_toast_box.add_theme_constant_override("margin_top", int(y if y >= 0.0 else safe_margins().x + 178.0))
+
+
 func show_toast(text: String, icon := "star") -> void:
-	if Game._arg("shot") != "" or Game._arg("promo") != "":
+	if (Game._arg("shot") != "" or Game._arg("promo") != "") and Game._arg("say") == "":
 		return                                    # capturas y vídeo para la tienda: sin avisos
 	var snd: String = {"coin": "coin", "egg": "hatch", "star": "chime", "dna": "chime", "health": "error", "pearl": "chime", "sparkle": "chime"}.get(icon, "")
 	if snd != "":
@@ -401,7 +421,13 @@ func show_toast(text: String, icon := "star") -> void:
 		Sfx.vibrate(20)
 	if _toasts.get_child_count() >= 3:
 		_toasts.get_child(0).queue_free()
-	var p := UI.card(Color(1, 0.99, 0.96, 0.97), 26)
+	var p := UI.card(Color(1, 0.99, 0.96, 0.98), 26)
+	var st: StyleBoxFlat = p.get_theme_stylebox("panel").duplicate()
+	st.border_color = UI.SUN_D if icon != "health" else UI.BAD
+	st.set_border_width_all(3)
+	st.shadow_color = Color(0, 0, 0, 0.35)
+	st.shadow_size = 14
+	p.add_theme_stylebox_override("panel", st)
 	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	p.custom_minimum_size.x = 0
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1026,6 +1052,7 @@ func _refresh_next() -> void:
 	_next_action = st[1]
 	_next_btn.text = "   " + st[0]
 	_next_btn.visible = st[0] != ""
+	_names_btn.visible = not tut                     # en el tutorial, nada que distraiga de su tarjeta
 
 
 func _do_next(a: String) -> void:

@@ -1736,7 +1736,8 @@ func prune_decor(i: int) -> void:
 func _refresh_orders(now: float) -> void:
 	var before := orders.size()
 	orders = orders.filter(func(o): return float(o.expires) > now)
-	if orders.size() < 3 and (now >= next_order_at or orders.is_empty()):
+	# Durante el tutorial solo existe su pedido guiado: el primero tiene que ser facilísimo.
+	if started and orders.size() < 3 and (now >= next_order_at or orders.is_empty()):
 		var o := _new_order(now)
 		if not o.is_empty():
 			orders.append(o)
@@ -1745,7 +1746,51 @@ func _refresh_orders(now: float) -> void:
 		_dirty = true
 
 
+## Pedido guiado del tutorial: pide el pez que tienes suelto (así la pareja de cría sigue junta)
+## y paga bien. Vacío si ya se hizo o no hay ningún adulto sano que entregar.
+func tutorial_order() -> Dictionary:
+	if stats.get("tut_order", false):
+		for o in orders:
+			if o.get("tut", false):
+				return o
+		return {}
+	var count := {}
+	for f in fish:
+		count[f.genes.sp] = int(count.get(f.genes.sp, 0)) + 1
+	var pick: Dictionary = {}
+	for f in fish:
+		if order_matches({"sp": f.genes.sp, "kind": "adult"}, f) and (pick.is_empty() or count[f.genes.sp] < count[pick.genes.sp]):
+			pick = f
+	if pick.is_empty():
+		return {}
+	var sp: String = pick.genes.sp
+	var o := {"id": next_id, "who": "Sra. Pilar", "sp": sp, "kind": "adult", "tut": true,
+		"expires": Time.get_unix_time_from_system() + 48.0 * 3600.0,
+		"coins": maxi(60, int(Catalog.SPECIES[sp].price) * 4), "xp": 20}
+	next_id += 1
+	orders.push_front(o)
+	stats.tut_order = true
+	_dirty = true
+	changed.emit()
+	return o
+
+
+## Primeros pedidos (hasta 3 entregas): un adulto de una especie que ya tienes, sin más requisitos.
+const EASY_ORDERS := 3
+
+
 func _new_order(now: float) -> Dictionary:
+	if int(stats.get("orders", 0)) < EASY_ORDERS:
+		var mine: Array = []
+		for f in fish:
+			if not f.genes.sp in mine:
+				mine.append(f.genes.sp)
+		if not mine.is_empty():
+			var esp: String = mine[rng.randi() % mine.size()]
+			var easy := {"id": next_id, "who": Catalog.CUSTOMERS[rng.randi() % Catalog.CUSTOMERS.size()], "sp": esp, "kind": "adult",
+				"expires": now + 48.0 * 3600.0, "coins": maxi(40, int(Catalog.SPECIES[esp].price * 2.5)), "xp": 20}
+			next_id += 1
+			return easy
 	var waters := {}
 	for t in tanks:
 		waters[t.water_kind] = true
@@ -1753,7 +1798,7 @@ func _new_order(now: float) -> Dictionary:
 	var pool: Array = []
 	for sp in Catalog.SPECIES_ORDER:
 		var s: Dictionary = Catalog.SPECIES[sp]
-		if s.level <= level + 1 and waters.has(s.water):
+		if s.level <= level and waters.has(s.water):     # nada que todavía no se pueda comprar
 			pool.append(sp)
 	if pool.is_empty():
 		return {}

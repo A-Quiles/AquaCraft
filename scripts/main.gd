@@ -148,6 +148,10 @@ func _screenshot() -> void:
 				hud._tutorial._advance()
 			if Game._arg("then") == "shop":
 				hud.open_shop(0)
+			elif Game._arg("then") == "missions":
+				hud.open_missions()
+			elif Game._arg("then") == "levelup":
+				hud._on_level_up(Game.level)
 		"algae":
 			for i in Game.algae.size():
 				Game.algae[i] = mini(255, int(Game.algae_weights()[i] * float(open.get_slice(":", 1))))
@@ -164,6 +168,9 @@ func _screenshot() -> void:
 				set_mode(Mode.CLEAN)
 			for i in (30 if open == "clean" else 0):
 				tank.clean_stroke(Vector2(tank.size.x * (0.2 + i * 0.02), tank.size.y * (0.3 + sin(i * 0.4) * 0.1)))
+	if Game._arg("say") != "":                     # aviso de prueba (p. ej. encima de la tienda)
+		await get_tree().create_timer(0.4).timeout
+		Game.toast.emit(Game._arg("say"), "tank")
 	await _save_shot()
 
 

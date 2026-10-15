@@ -198,16 +198,22 @@ func _init() -> void:
 	game._grow_plants(60.0 * 24 * 5)
 	check(float(game.decor[0].g) > 1.0, "las plantas crecen con los días")
 
-	# Pedidos de clientes.
+	# Pedidos de clientes: durante el tutorial solo existe el guiado, que pide el pez que está solo.
 	game.level = 1
+	for f in game.fish:
+		f.health = 100.0
 	game._refresh_orders(Time.get_unix_time_from_system())
-	check(game.orders.size() == 1, "llega un pedido")
-	var o: Dictionary = game.orders[0]
-	o.kind = "adult"
-	o.sp = "guppy"
-	var buyer: Dictionary = game._add_fish(Genetics.random_genes("guppy", rng), 1.0, false)
+	check(game.orders.is_empty(), "durante el tutorial no llegan pedidos sueltos")
+	var tut: Dictionary = game.tutorial_order()
+	var lone: Array = game.fish.filter(func(f): return game.order_matches(tut, f))
+	check(lone.size() == 1, "el pedido del tutorial pide el pez que está solo y se puede entregar ya")
 	var c0: int = game.coins
-	check(game.deliver_order(int(o.id), int(buyer.id)) and game.coins > c0 and game.orders.is_empty(), "entregar un pedido paga y se lleva el pez")
+	check(game.deliver_order(int(tut.id), int(lone[0].id)) and game.coins > c0 and game.orders.is_empty(), "entregar un pedido paga y se lleva el pez")
+	check(game.tutorial_order().is_empty(), "el pedido guiado sale una sola vez")
+	game.started = true
+	game._refresh_orders(Time.get_unix_time_from_system())
+	check(game.orders.size() == 1 and game.fish.any(func(f): return game.order_matches(game.orders[0], f)), "los primeros pedidos piden un pez que ya tienes")
+	game.orders.clear()
 
 	# Varias peceras, mudanzas y guardado.
 	game.level = 4

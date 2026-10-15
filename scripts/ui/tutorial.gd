@@ -14,6 +14,8 @@ const STEPS := [
 	{"text": "Cada aparato se desgasta: cuando veas un aviso «!», tócalo y mantén pulsado para limpiarlo. Los básicos se rompen si llegan a 0%.", "wait": "button", "button": "Entendido", "care": true},
 	{"text": "Si un pez tiene molestias, su ficha te dice qué hacer; el bote «Agua» trae pH+, pH−, oxígeno y antialgas. Ahora, para criar, abre «Peces», elige un adulto y pulsa «Criar».", "target": "bar:fish", "wait": "fish_sheet"},
 	{"text": "Dos adultos de la misma especie, sanos y felices, ponen un huevo. Las crías heredan colores, patrón y mutaciones: ¡los raros valen mucho más!", "wait": "button", "button": "Entendido"},
+	{"text": "¡Tu primer cliente! %s quiere un %s adulto y paga mucho más que la tienda. Abre «Misiones».", "target": "bar:missions", "wait": "orders_open", "order": true},
+	{"text": "Pulsa «Entregar» y elige tu %s. Cada pocas horas llegan pedidos nuevos: así se gana dinero de verdad.", "wait": "order_done", "order": true, "free_sheet": true},
 	{"text": "Por último, pulsa «Decorar»: arrastra plantas, adornos y aparatos donde quieras, o moldea la arena para hacer montañas.","target": "bar:edit", "wait": "mode_edit"},
 	{"text": "Los peces contentos sueltan burbujas con monedas: ¡tócalas! Con dos dedos acercas la pecera como una foto. Y si no sabes qué hacer, el botón amarillo de abajo te lo dice.", "wait": "button", "button": "¡Genial!"},
 	{"text": "¡Listo! Las misiones te irán guiando. Disfruta de tu acuario.", "wait": "button", "button": "¡A bucear!"},
@@ -28,6 +30,7 @@ var _card: PanelContainer
 var _text: Label
 var _next: Button
 var _blockers: Array[Control] = []
+var _toast_y := -2.0
 var _modal_open := false   ## 4 franjas que bloquean los toques fuera del hueco
 
 
@@ -62,8 +65,9 @@ func _ready() -> void:
 
 func _advance() -> void:
 	step += 1
-	# En modo Relax no hay algas ni desgaste: esos pasos sobran.
-	while step < STEPS.size() and STEPS[step].get("care", false) and Game.mode == "basico":
+	# En modo Relax no hay algas ni desgaste: esos pasos sobran. Sin pez que entregar, tampoco hay pedido.
+	while step < STEPS.size() and (STEPS[step].get("care", false) and Game.mode == "basico" \
+			or STEPS[step].get("order", false) and Game.tutorial_order().is_empty()):
 		step += 1
 	if step >= STEPS.size():
 		_finish()
@@ -71,6 +75,10 @@ func _advance() -> void:
 	var s: Dictionary = STEPS[step]
 	_tidy(s)
 	_text.text = s.text
+	if s.get("order", false):
+		var o := Game.tutorial_order()
+		var sp: String = Catalog.SPECIES[o.sp].name.to_lower()
+		_text.text = s.text % ([o.who, sp] if s.text.count("%s") == 2 else [sp])
 	_next.visible = s.wait == "button"
 	_next.text = s.get("button", "")
 	_base = _progress(s.wait)
@@ -86,6 +94,7 @@ func _tidy(s: Dictionary) -> void:
 
 
 func _finish() -> void:
+	hud.set_toast_top(-1.0)
 	if main.mode != main.Mode.NORMAL:
 		main.set_mode(main.mode)
 	Game.started = true
@@ -100,6 +109,7 @@ func _progress(wait: String) -> float:
 		"fed": return float(Game.stats.get("feed", 0))
 		"cleaned": return float(Game.stats.get("cleaned", 0)) + float(Game.stats.get("clean_acc", 0.0))
 		"maint": return float(Game.stats.get("maint", 0))
+		"order_done": return float(Game.stats.get("orders", 0))
 	return 0.0
 
 
@@ -113,6 +123,15 @@ func _done(wait: String) -> bool:
 		"maint": return _progress(wait) > _base or Game.equipment.filter == ""
 		"filter": return Game.equipment.filter != ""
 		"fish_sheet": return hud._sheet is FishSheet and is_instance_valid(hud._sheet)
+		"orders_open":
+			# Al abrir Misiones se salta directo a la pestaña de pedidos.
+			if hud._sheet is MissionsSheet and is_instance_valid(hud._sheet):
+				if hud._sheet.tab != 1:
+					hud._sheet.tab = 1
+					hud._sheet._build()
+				return true
+			return false
+		"order_done": return _progress(wait) > _base
 	return false
 
 
@@ -127,16 +146,34 @@ func _process(_dt: float) -> void:
 	var vp := get_viewport_rect().size
 	_card.custom_minimum_size.x = minf(vp.x - 40.0, 660.0)
 	_card.reset_size()
-	var y := 230.0 if _hole.size == Vector2.ZERO or _hole.get_center().y > vp.y * 0.5 else vp.y - _card.size.y - 330.0
-	_card.position = Vector2((vp.x - _card.size.x) * 0.5, y + Hud.safe_margins().x)
-	# Si el jugador está usando una ventana (p. ej. el mantenimiento), le dejamos hacerlo.
+	var top := _hole.size == Vector2.ZERO or _hole.get_center().y > vp.y * 0.5
+	var y := 230.0 + Hud.safe_margins().x
+	if top and _hole.size != Vector2.ZERO and y + _card.size.y + 14.0 > _hole.position.y:
+		y = maxf(Hud.safe_margins().x + 172.0, _hole.position.y - _card.size.y - 14.0)   # arriba del todo si hace falta
+	if not top:
+		# Abajo: encima de la barra de botones, sin pisar lo que se señala.
+		var bar_top: float = (hud._bar.edit as Control).get_global_rect().position.y
+		y = maxf(bar_top - _card.size.y - 14.0, _hole.end.y + 14.0)
+	_card.position = Vector2((vp.x - _card.size.x) * 0.5, y)
+	# Si el jugador está usando una ventana (mantenimiento, elegir pez, subida de nivel...), le dejamos
+	# hacerlo y la tarjeta se aparta para no taparla.
 	_modal_open = hud._modal != null and is_instance_valid(hud._modal) and not hud._modal.closing
+	_card.visible = not _modal_open
 	# Con una hoja abierta (tienda, peces) el aviso baja al pie para no tapar sus pestañas;
 	# en los pasos de compra además se deja usar la tienda entera.
 	var sheet_open: bool = hud._sheet != null and is_instance_valid(hud._sheet) and not hud._sheet.closing
 	if sheet_open:
 		_card.position.y = vp.y - _card.size.y - 24.0 - Hud.safe_margins().y
 		_modal_open = _modal_open or s.get("free_sheet", false)
+	# Avisos: bajo la tarjeta si está arriba, o bajo lo señalado si está arriba, para que no tapen nada.
+	var ty := -1.0
+	if _card.visible and _card.position.y < vp.y * 0.5:
+		ty = _card.position.y + _card.size.y + 12.0
+	elif _hole.size != Vector2.ZERO and _hole.get_center().y < vp.y * 0.5:
+		ty = _hole.end.y + 18.0
+	if ty != _toast_y:
+		_toast_y = ty
+		hud.set_toast_top(ty)
 	var rects: Array = [Rect2(Vector2.ZERO, vp), Rect2(), Rect2(), Rect2()]
 	if _modal_open:
 		rects[0] = Rect2()

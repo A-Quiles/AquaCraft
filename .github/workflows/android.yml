@@ -54,6 +54,8 @@ jobs:
           ./godot --headless -s tests/test_core.gd
           ./godot --headless --resolution 720x1280 -s tests/smoke.gd -- demo=1 2>&1 | tee smoke.log
           ! grep -q "SCRIPT ERROR" smoke.log
+          ./godot --headless --resolution 720x1280 -s tests/tutorial_check.gd -- demo=0
+          ./godot --headless --resolution 720x1280 -s tests/zoom_check.gd -- demo=1
 
       - name: Versión (código = nº de ejecución)
         run: |
