@@ -72,7 +72,7 @@ func _card(grid: GridContainer, preview: Control, name: String, desc: String, ac
 		badge.position = Vector2(0, 0)
 		top.add_child(badge)
 	var bg := PanelContainer.new()
-	bg.add_theme_stylebox_override("panel", UI.box(Color("eaf7f8"), 18))
+	bg.add_theme_stylebox_override("panel", UI.box(Color("10293d"), 18))
 	bg.add_child(top)
 	v.add_child(bg)
 	v.add_child(UI.label(name, 25, UI.NAVY, UI.bold))

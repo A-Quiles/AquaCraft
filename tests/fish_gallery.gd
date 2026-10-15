@@ -2,7 +2,6 @@ extends SceneTree
 ## Galería de especies para revisar el shader de peces (necesita pantalla, no headless):
 ##   godot -s tests/fish_gallery.gd -- out.png
 
-const FISH_SHADER := preload("res://shaders/fish.gdshader")
 
 
 func _init() -> void:

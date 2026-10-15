@@ -1,14 +1,35 @@
 class_name FishArt
 extends RefCounted
-## Traduce genes → parámetros del shader de pez.
+## Traduce genes → pez 3D: malla de la especie (FishMesh) + materiales de cuerpo y aletas con sus colores,
+## patrón y mutaciones.
 
-const SHADER := preload("res://shaders/fish.gdshader")
-const WHITE := preload("res://assets/textures/dot.png")  # cualquier textura: el shader solo usa UV
+const BODY := preload("res://shaders/fish_body.gdshader")
+const FINS := preload("res://shaders/fish_fins.gdshader")
 
 
-static func material(g: Dictionary) -> ShaderMaterial:
-	var m := ShaderMaterial.new()
-	m.shader = SHADER
+## Pez listo para poner en un FishStage. Sus dos materiales van en meta "mats".
+static func model(g: Dictionary) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	m.mesh = FishMesh.get_mesh(g.sp, bool(g.veil))
+	var mats: Array = []
+	for sh in [BODY, FINS]:
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		_fill(mat, g)
+		mats.append(mat)
+	m.set_surface_override_material(0, mats[0])
+	m.set_surface_override_material(1, mats[1])
+	m.set_meta("mats", mats)
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return m
+
+
+static func set_param(m: MeshInstance3D, key: String, value: Variant) -> void:
+	for mat in m.get_meta("mats"):
+		(mat as ShaderMaterial).set_shader_parameter(key, value)
+
+
+static func _fill(m: ShaderMaterial, g: Dictionary) -> void:
 	var sh: Dictionary = Catalog.SPECIES[g.sp].shape
 	var c := Genetics.colors(g)
 	m.set_shader_parameter("col_body", c[0])
@@ -39,15 +60,14 @@ static func material(g: Dictionary) -> ShaderMaterial:
 	m.set_shader_parameter("neon", 1.0 if g.neon else 0.0)
 	m.set_shader_parameter("albino", 1.0 if g.albino else 0.0)
 	m.set_shader_parameter("veil", 1.0 if g.veil else 0.0)
-	return m
 
 
-## Tamaño en píxeles del quad según especie, gen de tamaño y crecimiento (0..1).
+## Tamaño en píxeles del pez según especie, gen de tamaño y crecimiento (0..1).
 static func size_px(g: Dictionary, grow := 1.0) -> Vector2:
 	var w: float = Catalog.SPECIES[g.sp].shape.px * g.size * (0.42 + 0.58 * grow)
 	return Vector2(w, w / aspect(g))
 
 
-## Los peces con velo necesitan un quad más alto para que las aletas no se corten.
+## Los peces con velo necesitan un hueco más alto para que las aletas no se corten.
 static func aspect(g: Dictionary) -> float:
 	return Catalog.SPECIES[g.sp].shape.aspect / (1.3 if g.veil else 1.0)

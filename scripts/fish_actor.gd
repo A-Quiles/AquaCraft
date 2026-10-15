@@ -1,10 +1,12 @@
 class_name FishActor
 extends Node2D
-## Un pez en la pecera: deambula, busca comida, se asusta y gira con un pequeño "squash".
+## Un pez en la pecera: deambula, busca comida y se asusta. La lógica va en 2D; su cuerpo es un modelo
+## 3D en el escenario de la pecera (TankView.stage), que gira con volumen al cambiar de sentido.
 
 var data: Dictionary                 ## referencia al pez en Game.fish (se actualiza solo)
 var tank: TankView
-var sprite: Sprite2D
+var model: MeshInstance3D
+var yaw_wander := 0.0                ## leve giro hacia/desde el cristal mientras nada
 var vel := Vector2.ZERO
 var target := Vector2.ZERO
 var depth := 0.0
@@ -15,29 +17,20 @@ var phase := 0.0
 var retarget := 0.0
 var flee := 0.0
 var heart := 0.0
-var _grow_seen := -1.0
 
 
 func setup(f: Dictionary, t: TankView) -> void:
 	data = f
 	tank = t
-	sprite = Sprite2D.new()
-	sprite.texture = FishArt.WHITE
-	sprite.material = FishArt.material(f.genes)
-	add_child(sprite)
+	model = FishArt.model(f.genes)
+	t.stage.add_child(model)
+	tree_exiting.connect(model.queue_free)
 	depth = randf() * 0.6
 	depth_target = depth
 	facing = 1.0 if randf() < 0.5 else -1.0
 	turn = facing
 	position = _random_point()
 	target = _random_point()
-	_apply_size()
-
-
-func _apply_size() -> void:
-	_grow_seen = data.grow
-	var s := FishArt.size_px(data.genes, data.grow)
-	sprite.scale = s / Vector2(FishArt.WHITE.get_size())
 
 
 func size_px() -> Vector2:
@@ -45,8 +38,6 @@ func size_px() -> Vector2:
 
 
 func _process(dt: float) -> void:
-	if absf(data.grow - _grow_seen) > 0.01:
-		_apply_size()
 	var sp: Dictionary = Catalog.SPECIES[data.genes.sp]
 	var hp: float = data.health
 	var speed: float = sp.speed * (0.55 + 0.45 * hp / 100.0) * (0.75 + 0.25 * data.grow)
@@ -85,18 +76,20 @@ func _process(dt: float) -> void:
 
 	if absf(vel.x) > 5.0:
 		facing = signf(vel.x)
-	turn = move_toward(turn, facing, dt * 5.0)
-	var sz := 1.0 - depth * 0.22
-	scale = Vector2(sz * (turn if absf(turn) > 0.12 else 0.12 * signf(turn + 0.0001)), sz)
-	rotation = facing * clampf(atan2(vel.y, absf(vel.x) + 20.0) * 0.6, -0.45, 0.45)
-
+	turn = move_toward(turn, facing, dt * 3.2)
+	if retarget > 6.5 or randf() < dt * 0.2:
+		yaw_wander = randf_range(-0.35, 0.35)
 	depth = move_toward(depth, depth_target, dt * 0.05)
-	z_index = 20 - int(depth * 20.0)
 	phase += dt * (3.5 + vel.length() * 0.09)
-	var m: ShaderMaterial = sprite.material
-	m.set_shader_parameter("phase", phase)
-	m.set_shader_parameter("depth", depth)
-	m.set_shader_parameter("sick", clampf((50.0 - hp) / 40.0, 0.0, 1.0))
+	# Cuerpo 3D: girar es rotar sobre el eje vertical (se ve de frente a media vuelta); inclinarse, cabecear.
+	var sz := FishArt.size_px(data.genes, data.grow).x * 0.5 * (1.0 - depth * 0.22)
+	var yaw := acos(clampf(turn, -1.0, 1.0)) + yaw_wander * absf(turn)
+	var pitch := clampf(atan2(-vel.y, absf(vel.x) + 20.0) * 0.6, -0.45, 0.45)
+	model.transform = Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.BACK, pitch) * Basis.from_scale(Vector3.ONE * sz),
+		FishStage.to3d(position, -depth * 120.0))
+	FishArt.set_param(model, "phase", phase)
+	FishArt.set_param(model, "depth", depth)
+	FishArt.set_param(model, "sick", clampf((50.0 - hp) / 40.0, 0.0, 1.0))
 
 
 ## Huida al tocar el agua cerca.

@@ -29,8 +29,10 @@ func _init(title_text: String, height_frac := 0.8) -> void:
 	st.content_margin_right = 26
 	st.content_margin_top = 16
 	st.content_margin_bottom = 20 + Hud.safe_margins().y
-	st.shadow_color = Color(0, 0, 0, 0.3)
+	st.shadow_color = Color(0, 0, 0, 0.45)
 	st.shadow_size = 22
+	st.border_width_top = 1
+	st.border_color = Color(1, 1, 1, 0.12)
 	panel.add_theme_stylebox_override("panel", st)
 	panel.anchor_left = 0.0
 	panel.anchor_right = 1.0
@@ -40,7 +42,7 @@ func _init(title_text: String, height_frac := 0.8) -> void:
 	var v := UI.vbox(14)
 	panel.add_child(v)
 	var grip := ColorRect.new()
-	grip.color = Color(0, 0, 0, 0.12)
+	grip.color = Color(1, 1, 1, 0.18)
 	grip.custom_minimum_size = Vector2(70, 7)
 	grip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(grip)
@@ -118,7 +120,7 @@ func tabs(names: Array, current: int, on_pick: Callable) -> Array:
 		b.custom_minimum_size.y = 58
 		if i != current:
 			for k in ["normal", "hover"]:
-				b.add_theme_stylebox_override(k, UI.box(UI.SAND, 22, 6, Color("e2d3bd")))
+				b.add_theme_stylebox_override(k, UI.box(UI.SAND, 22, 6, UI.SAND_D))
 			b.add_theme_color_override("font_color", UI.MUTED)
 			b.add_theme_color_override("font_hover_color", UI.MUTED)
 		b.pressed.connect(on_pick.bind(i))

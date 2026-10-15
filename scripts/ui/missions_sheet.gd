@@ -26,7 +26,7 @@ func _build() -> void:
 			_album(v)
 			return
 
-	var lv := UI.card(Color("1d3557"))
+	var lv := UI.card(Color("123a5c"))
 	var lh := UI.hbox(16)
 	lh.add_child(VIcon.make("star", 64))
 	var lv_box := UI.vbox(6)
@@ -119,7 +119,7 @@ func _orders(v: VBoxContainer) -> void:
 		var r := RandomNumberGenerator.new()
 		r.seed = hash(o.sp)
 		var bg := PanelContainer.new()
-		bg.add_theme_stylebox_override("panel", UI.box(Color("dff3f5"), 18))
+		bg.add_theme_stylebox_override("panel", UI.box(Color("12324a"), 18))
 		var pv := Previews.fish(Genetics.random_genes(o.sp, r), 110, 170)
 		pv.custom_minimum_size.x = 170
 		bg.add_child(pv)
@@ -180,7 +180,7 @@ func _album(v: VBoxContainer) -> void:
 	for sp in Catalog.SPECIES_ORDER:
 		var s: Dictionary = Catalog.SPECIES[sp]
 		var n := Game.variants_of(sp)
-		var c := UI.card(Color.WHITE if n > 0 else Color("eef1f4"))
+		var c := UI.card(UI.CARD if n > 0 else Color("0f1c2b"))
 		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var col := UI.vbox(4)
 		var r := RandomNumberGenerator.new()

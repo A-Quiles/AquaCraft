@@ -36,11 +36,11 @@ static func icon(kind: String, h := 140.0, px := 96.0) -> Control:
 	return c
 
 
-static func fish(g: Dictionary, h := 140.0, maxw := 230.0) -> Control:
+static func fish(g: Dictionary, h := 140.0, maxw := 230.0, anim := false) -> Control:
 	var c := CenterContainer.new()
 	c.custom_minimum_size = Vector2(0, h)
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var p := FishPreview.make(g, 1.0)
+	var p := FishPreview.make(g, 1.0, anim)
 	var want := FishArt.size_px(g)
 	var k := minf(h * 0.85 / want.y, maxw / want.x)
 	p.custom_minimum_size = want * k

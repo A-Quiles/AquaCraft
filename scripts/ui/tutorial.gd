@@ -48,7 +48,7 @@ func _ready() -> void:
 	_text = UI.wrap(UI.label("", 25, UI.NAVY, UI.bold))
 	v.add_child(_text)
 	var row := UI.hbox(10)
-	var skip := UI.button("Saltar tutorial", UI.SAND, Color("e2d3bd"))
+	var skip := UI.button("Saltar tutorial", UI.SAND, UI.SAND_D)
 	skip.add_theme_color_override("font_color", UI.MUTED)
 	skip.add_theme_font_size_override("font_size", 20)
 	skip.pressed.connect(_finish)

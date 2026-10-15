@@ -6,7 +6,7 @@ extends Node2D
 const WATER := preload("res://shaders/water.gdshader")
 const SUBSTRATE := preload("res://shaders/substrate.gdshader")
 const GLASS := preload("res://shaders/glass.gdshader")
-const SWAY := preload("res://shaders/sway.gdshader")
+const DECOR := preload("res://shaders/decor.gdshader")
 const CAUSTICS := preload("res://assets/textures/caustics.png")
 const NOISE := preload("res://assets/textures/noise.png")
 const BUBBLE := preload("res://assets/textures/bubble.png")
@@ -17,6 +17,9 @@ const SUB_RECT := 0.5                ## el rect del sustrato empieza más arriba
 var size := Vector2(520, 460)
 var actors := {}                     ## id → FishActor
 var food: FoodLayer
+var stage: FishStage                 ## escenario 3D donde nadan los peces
+var _fish_tex: TextureRect
+var _zoom := 1.0
 var overlay: TankOverlay
 
 var _water: ColorRect
@@ -56,6 +59,17 @@ func _ready() -> void:
 	_eggs = _node()
 	_eggs.draw.connect(_draw_eggs)
 	_fish_layer = _node()
+	stage = FishStage.new()
+	add_child(stage)
+	_fish_tex = TextureRect.new()
+	_fish_tex.texture = stage.get_texture()
+	_fish_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_fish_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fish_tex.z_index = 15
+	var fm := CanvasItemMaterial.new()
+	fm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA   # el 3D sale con alfa premultiplicado
+	_fish_tex.material = fm
+	_fish_layer.add_child(_fish_tex)
 	_front = _node()
 	_front.z_index = 25
 	food = FoodLayer.new()
@@ -151,6 +165,8 @@ func layout(rect: Rect2) -> void:
 	_sub.material.set_shader_parameter("size", _sub.size)
 	_sub.material.set_shader_parameter("tank", size)
 	_sub.material.set_shader_parameter("rect_top", size.y * SUB_RECT)
+	_fish_tex.size = size
+	_frame_stage()
 	_motes.emission_rect_extents = size * 0.5
 	_motes.position = size * 0.5
 	rebuild()
@@ -194,7 +210,19 @@ func _refresh_water() -> void:
 	_sub.material.set_shader_parameter("light", light)
 
 
+## Resolución del 3D: la de la pantalla real, y más al acercar con dos dedos (hasta un tope).
+func set_render_zoom(z: float) -> void:
+	_zoom = z
+	_frame_stage()
+
+
+func _frame_stage() -> void:
+	var px := get_viewport().get_final_transform().get_scale().x if is_inside_tree() else 1.0
+	stage.frame(size, clampf(px * _zoom, 1.0, 2.6))
+
+
 func set_night(n: float) -> void:
+	stage.set_light(lerpf(1.0, 0.5, n))
 	_water.material.set_shader_parameter("night", n * 0.35)
 	_glass.material.set_shader_parameter("night", n)
 
@@ -348,13 +376,17 @@ func _build_decor() -> void:
 			item.u *= clampf(float(it.get("g", 1.0)), 0.7, 1.9)   # las plantas crecen hasta que se podan
 		item.sd = i * 977 + Game.tank_tier
 		item.scale.x = -1.0 if it.flip else 1.0
-		if d.kind == "plant":
-			var m := ShaderMaterial.new()
-			m.shader = SWAY
-			m.set_shader_parameter("height", DecorArt.BOUNDS[it.id].size.y * item.u)
-			m.set_shader_parameter("amp", 8.0 * u)
-			m.set_shader_parameter("phase", i * 1.7)
-			item.material = m
+		# Acabado realista: textura, sombra de contacto, cáusticas y bruma según la capa; las plantas ondulan.
+		var m := ShaderMaterial.new()
+		m.shader = DECOR
+		m.set_shader_parameter("height", DecorArt.BOUNDS[it.id].size.y * item.u)
+		m.set_shader_parameter("amp", 8.0 * u if d.kind == "plant" else 0.0)
+		m.set_shader_parameter("phase", i * 1.7)
+		m.set_shader_parameter("fog", [0.3, 0.12, 0.0][item.layer])
+		m.set_shader_parameter("fog_col", Color(0.1, 0.36, 0.6) if Game.water_kind == "salada" else Color(0.12, 0.42, 0.5))
+		m.set_shader_parameter("noise", NOISE)
+		m.set_shader_parameter("caustics", CAUSTICS)
+		item.material = m
 		[_back, _mid, _front][item.layer].add_child(item)
 		_decor_nodes.append(item)
 		set_decor_x(i, it.x * size.x)

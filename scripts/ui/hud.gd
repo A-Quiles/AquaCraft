@@ -57,7 +57,9 @@ func _ready() -> void:
 
 
 func _glass(radius := 26) -> StyleBoxFlat:
-	var s := UI.box(Color(0.04, 0.12, 0.19, 0.58), radius)
+	var s := UI.box(Color(0.055, 0.1, 0.17, 0.72), mini(radius, 20))
+	s.set_border_width_all(1)
+	s.border_color = UI.LINE
 	s.content_margin_top = 6
 	s.content_margin_bottom = 6
 	s.content_margin_left = 12
@@ -211,7 +213,7 @@ func _build_bottom() -> void:
 	_sculpt_btn.add_theme_font_size_override("font_size", 21)
 	_sculpt_btn.pressed.connect(func(): main.set_sculpt(not main.sculpt))
 	_edit_row.add_child(_sculpt_btn)
-	_flat_btn = UI.button("Allanar", UI.SAND, Color("e2d3bd"))
+	_flat_btn = UI.button("Allanar", UI.SAND, UI.SAND_D)
 	_flat_btn.add_theme_color_override("font_color", UI.NAVY)
 	_flat_btn.add_theme_font_size_override("font_size", 21)
 	_flat_btn.pressed.connect(func(): main.flatten_terrain())
@@ -268,7 +270,7 @@ func _build_bottom() -> void:
 	_next_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	UI.button_colors(_next_btn, UI.SUN, UI.SUN_D)
 	for k in ["font_color", "font_hover_color", "font_pressed_color"]:
-		_next_btn.add_theme_color_override(k, UI.NAVY)
+		_next_btn.add_theme_color_override(k, UI.DARK)
 	_next_btn.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	_next_btn.offset_left = 18
 	_next_btn.offset_right = -204
@@ -294,11 +296,13 @@ func _style_names() -> void:
 
 
 func _style_bar(b: Button, active: bool) -> void:
-	var bg := UI.TEAL if active else Color("fffaf2")
-	var dark := UI.TEAL_D if active else Color("d9ccb8")
+	var bg := Color(UI.TEAL, 0.9) if active else Color(0.055, 0.1, 0.17, 0.78)
 	for st in ["normal", "hover"]:
-		b.add_theme_stylebox_override(st, UI.box(bg, 30, 7, dark))
-	b.add_theme_stylebox_override("pressed", UI.box(dark.lerp(bg, 0.5), 30, 3, dark, 4))
+		var sb := UI.box(bg, 22)
+		sb.set_border_width_all(1)
+		sb.border_color = UI.TEAL if active else UI.LINE
+		b.add_theme_stylebox_override(st, sb)
+	b.add_theme_stylebox_override("pressed", UI.box(bg.darkened(0.25), 22))
 	(b.get_meta("label") as Label).add_theme_color_override("font_color", Color.WHITE if active else UI.NAVY)
 
 
@@ -333,7 +337,7 @@ func refresh_mode() -> void:
 				continue
 			var on: bool = id == main.food_type
 			var nm: String = Catalog.FOODS[id].name.get_slice(" ", 0)
-			var b := UI.button(nm if n < 0 else "%s %d" % [nm, n], UI.CORAL if on else UI.SAND, UI.CORAL_D if on else Color("e2d3bd"))
+			var b := UI.button(nm if n < 0 else "%s %d" % [nm, n], UI.CORAL if on else UI.SAND, UI.CORAL_D if on else UI.SAND_D)
 			b.add_theme_font_size_override("font_size", 19)
 			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			if not on:
@@ -421,10 +425,11 @@ func show_toast(text: String, icon := "star") -> void:
 		Sfx.vibrate(20)
 	if _toasts.get_child_count() >= 3:
 		_toasts.get_child(0).queue_free()
-	var p := UI.card(Color(1, 0.99, 0.96, 0.98), 26)
+	var p := UI.card(Color(0.07, 0.13, 0.21, 0.97), 18)
 	var st: StyleBoxFlat = p.get_theme_stylebox("panel").duplicate()
-	st.border_color = UI.SUN_D if icon != "health" else UI.BAD
-	st.set_border_width_all(3)
+	st.border_color = UI.TEAL if icon != "health" else UI.BAD
+	st.set_border_width_all(0)
+	st.border_width_left = 4
 	st.shadow_color = Color(0, 0, 0, 0.35)
 	st.shadow_size = 14
 	p.add_theme_stylebox_override("panel", st)
@@ -578,12 +583,12 @@ func open_setup() -> void:
 	var paint := func():
 		for id in mode_buttons:
 			var on: bool = pick.mode == id
-			UI.button_colors(mode_buttons[id], UI.TEAL if on else Color("e7ddd0"), UI.TEAL_D if on else Color("cfc2ae"))
+			UI.button_colors(mode_buttons[id], UI.TEAL if on else UI.SAND, UI.TEAL_D if on else UI.SAND_D)
 			for k in ["font_color", "font_hover_color", "font_pressed_color"]:
 				mode_buttons[id].add_theme_color_override(k, Color.WHITE if on else UI.NAVY)
 		for wid in water_buttons:
 			var on: bool = pick.water == wid
-			UI.button_colors(water_buttons[wid], UI.LAV if on else Color("e7ddd0"), UI.LAV_D if on else Color("cfc2ae"))
+			UI.button_colors(water_buttons[wid], UI.LAV if on else UI.SAND, UI.LAV_D if on else UI.SAND_D)
 			for k in ["font_color", "font_hover_color", "font_pressed_color"]:
 				water_buttons[wid].add_theme_color_override(k, Color.WHITE if on else UI.NAVY)
 		desc.text = Catalog.MODES[pick.mode].desc
@@ -664,7 +669,7 @@ func open_water_panel() -> void:
 
 ## Fila de selector: dibujo, título, texto y botones a la derecha.
 func _pick_row(art: Control, title: String, desc: String, buttons: Array) -> Control:
-	var c := UI.card(Color.WHITE, 22)
+	var c := UI.card(UI.CARD, 22)
 	var h := UI.hbox(10)
 	art.custom_minimum_size = Vector2(70, 70)
 	h.add_child(art)
@@ -743,7 +748,7 @@ func open_equipment(slot: String) -> void:
 			Game.remove_equipment(slot)
 			m.close())
 		m.box.add_child(rem)
-	var shop := UI.button("Ver otros modelos", UI.SAND, Color("e2d3bd"))
+	var shop := UI.button("Ver otros modelos", UI.SAND, UI.SAND_D)
 	shop.add_theme_color_override("font_color", UI.NAVY)
 	shop.pressed.connect(func():
 		m.close()
@@ -928,7 +933,7 @@ func open_settings() -> void:
 		var paint := func():
 			var on: bool = Game.settings[k[0]]
 			b.text = "Sí" if on else "No"
-			UI.button_colors(b, UI.TEAL if on else Color("c9d2db"), UI.TEAL_D if on else Color("aab6c2"))
+			UI.button_colors(b, UI.TEAL if on else UI.SAND, UI.TEAL_D if on else UI.SAND_D)
 		paint.call()
 		b.pressed.connect(func():
 			Game.settings[k[0]] = not Game.settings[k[0]]
@@ -942,13 +947,13 @@ func open_settings() -> void:
 		m.close()
 		open_mode_picker())
 	m.box.add_child(modes)
-	var tut := UI.button("Repetir el tutorial", UI.SAND, Color("e2d3bd"))
+	var tut := UI.button("Repetir el tutorial", UI.SAND, UI.SAND_D)
 	tut.add_theme_color_override("font_color", UI.NAVY)
 	tut.pressed.connect(func():
 		m.close()
 		start_tutorial())
 	m.box.add_child(tut)
-	var priv := UI.button("Política de privacidad", UI.SAND, Color("e2d3bd"))
+	var priv := UI.button("Política de privacidad", UI.SAND, UI.SAND_D)
 	priv.add_theme_color_override("font_color", UI.NAVY)
 	priv.pressed.connect(func(): OS.shell_open(PRIVACY_URL))
 	m.box.add_child(priv)
@@ -978,7 +983,7 @@ func open_streak() -> void:
 	grid.add_theme_constant_override("v_separation", 8)
 	var today := Game.streak_day()
 	for i in Catalog.STREAK.size():
-		var c := UI.card(UI.SUN if i == today else (Color("dff3f5") if i < today else Color.WHITE), 18)
+		var c := UI.card(UI.SUN if i == today else (Color("12324a") if i < today else UI.CARD), 18)
 		c.custom_minimum_size = Vector2(128, 0)
 		var v := UI.vbox(2)
 		var l := UI.label("Día %d" % (i + 1), 19, UI.NAVY, UI.heading)
@@ -1052,7 +1057,8 @@ func _refresh_next() -> void:
 	_next_action = st[1]
 	_next_btn.text = "   " + st[0]
 	_next_btn.visible = st[0] != ""
-	_names_btn.visible = not tut                     # en el tutorial, nada que distraiga de su tarjeta
+	# En el tutorial o con una herramienta en la mano (su panel ocupa ese hueco), fuera «Nombres».
+	_names_btn.visible = not tut and main.mode == main.Mode.NORMAL
 
 
 func _do_next(a: String) -> void:

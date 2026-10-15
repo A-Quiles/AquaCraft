@@ -132,6 +132,8 @@ void fragment() {
 	vec2 px = uv * size;
 	vec3 col = mix(wall_top, wall_low, smoothstep(0.0, 0.85, uv.y));
 	col = wallpaper(col, px);
+	// Enlucido: irregularidades suaves y poro fino, como una pared de verdad.
+	col *= 0.95 + 0.07 * vnoise(px * 0.012) + 0.03 * vnoise(px * 0.18);
 
 	if (!thumb) {
 		float lw = smoothstep(0.45, 0.8, dot(wall_top, vec3(0.299, 0.587, 0.114)));   // pared clara: luces más suaves
@@ -143,6 +145,10 @@ void fragment() {
 		vec2 d = max(abs(px - c) - tank.zw * 0.5, 0.0);
 		float g = exp(-length(d) / (90.0 + tank.z * 0.25));
 		col += glow * g * mix(0.32, 0.5, night) * mix(1.0, 0.35, lw);
+		// Sombra suave de la pecera sobre la pared (la lámpara está arriba a la izquierda).
+		vec2 sc = c + vec2(18.0, 26.0);
+		vec2 sd = max(abs(px - sc) - tank.zw * 0.5 + 10.0, 0.0);
+		col *= 1.0 - 0.32 * exp(-length(sd) / 26.0) * (1.0 - night * 0.5);
 		col *= mix(1.0, 0.55, night);
 		// Viñeta
 		vec2 v = uv - 0.5;

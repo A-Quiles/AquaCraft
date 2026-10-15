@@ -1,21 +1,26 @@
 class_name UI
 extends RefCounted
-## Tema "cozy" y constructores de controles para que todas las pantallas se vean iguales.
+## Tema oscuro tipo cristal y constructores de controles para que todas las pantallas se vean iguales.
+## NAVY es el color del texto (claro sobre paneles azul noche); CREAM, el fondo de hojas y ventanas.
 
-const NAVY := Color("1d3557")
-const MUTED := Color("6b7f95")
-const TEAL := Color("1fb5ad")
-const TEAL_D := Color("12857f")
-const CORAL := Color("ff7a6b")
-const CORAL_D := Color("d9554a")
-const SUN := Color("ffb627")
-const SUN_D := Color("d98a0b")
-const LAV := Color("8f7bff")
-const LAV_D := Color("6a55e0")
-const CREAM := Color("fff8ee")
-const SAND := Color("f3e9da")
-const GOOD := Color("4fc27a")
-const WARN := Color("ffb020")
+const NAVY := Color("e8f1f7")         ## texto principal
+const MUTED := Color("8ea4b9")        ## texto secundario
+const DARK := Color("0e1a2b")         ## texto sobre botones claros (dorado) y fondo base
+const TEAL := Color("2ec4b6")         ## acento
+const TEAL_D := Color("1f9488")
+const CORAL := Color("ff6b5e")
+const CORAL_D := Color("cf4a3f")
+const SUN := Color("f2b53a")
+const SUN_D := Color("c98c17")
+const LAV := Color("8c7af0")
+const LAV_D := Color("6550d0")
+const CREAM := Color(0.055, 0.1, 0.17, 0.97)   ## hojas y ventanas
+const CARD := Color(0.09, 0.15, 0.23, 0.92)    ## tarjetas dentro de las hojas
+const SAND := Color("1c3048")         ## botones secundarios y pestañas
+const SAND_D := Color("132235")
+const LINE := Color(1, 1, 1, 0.08)    ## filo fino de paneles
+const GOOD := Color("4fd18b")
+const WARN := Color("f2b53a")
 const BAD := Color("ff5a5f")
 
 static var body: FontVariation
@@ -28,32 +33,31 @@ static func setup() -> Theme:
 	if theme:
 		return theme
 	var ts := TextServerManager.get_primary_interface()
-	var nunito: FontFile = load("res://assets/fonts/Nunito.ttf")
-	var fredoka: FontFile = load("res://assets/fonts/Fredoka.ttf")
-	body = _font(nunito, {ts.name_to_tag("wght"): 650})
-	bold = _font(nunito, {ts.name_to_tag("wght"): 850})
-	heading = _font(fredoka, {ts.name_to_tag("wght"): 600})
+	var manrope: FontFile = load("res://assets/fonts/Manrope.ttf")
+	body = _font(manrope, {ts.name_to_tag("wght"): 560})
+	bold = _font(manrope, {ts.name_to_tag("wght"): 720})
+	heading = _font(manrope, {ts.name_to_tag("wght"): 800})
 	var t := Theme.new()
 	t.default_font = body
 	t.default_font_size = 26
 	t.set_color("font_color", "Label", NAVY)
 	for st in ["normal", "hover", "focus"]:
-		t.set_stylebox(st, "Button", box(TEAL, 22, 6, TEAL_D))
-	t.set_stylebox("pressed", "Button", box(TEAL_D, 22, 2, TEAL_D, 4))
-	t.set_stylebox("disabled", "Button", box(Color("c9d2db"), 22, 6, Color("aab6c2")))
+		t.set_stylebox(st, "Button", btn_box(TEAL))
+	t.set_stylebox("pressed", "Button", btn_box(TEAL_D))
+	t.set_stylebox("disabled", "Button", btn_box(SAND_D))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	t.set_font("font", "Button", bold)
 	t.set_font_size("font_size", "Button", 25)
 	for k in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		t.set_color(k, "Button", Color.WHITE)
-	t.set_color("font_disabled_color", "Button", Color(1, 1, 1, 0.9))
-	t.set_stylebox("panel", "PanelContainer", box(Color.WHITE, 24))
-	t.set_stylebox("background", "ProgressBar", box(Color("e3eaf0"), 10))
+	t.set_color("font_disabled_color", "Button", MUTED)
+	t.set_stylebox("panel", "PanelContainer", box(CARD, 18))
+	t.set_stylebox("background", "ProgressBar", box(Color(1, 1, 1, 0.08), 10))
 	t.set_stylebox("fill", "ProgressBar", box(TEAL, 10))
 	t.set_stylebox("scroll", "VScrollBar", StyleBoxEmpty.new())
-	t.set_stylebox("grabber", "VScrollBar", box(Color(0, 0, 0, 0.12), 4))
-	t.set_stylebox("grabber_highlight", "VScrollBar", box(Color(0, 0, 0, 0.2), 4))
-	t.set_stylebox("grabber_pressed", "VScrollBar", box(Color(0, 0, 0, 0.25), 4))
+	t.set_stylebox("grabber", "VScrollBar", box(Color(1, 1, 1, 0.12), 4))
+	t.set_stylebox("grabber_highlight", "VScrollBar", box(Color(1, 1, 1, 0.2), 4))
+	t.set_stylebox("grabber_pressed", "VScrollBar", box(Color(1, 1, 1, 0.25), 4))
 	theme = t
 	return t
 
@@ -80,10 +84,23 @@ static func box(bg: Color, radius := 20, bottom := 0, border := Color.TRANSPAREN
 	return s
 
 
+## Botón plano con un brillo fino arriba (sin borde grueso de "juguete").
+static func btn_box(bg: Color) -> StyleBoxFlat:
+	var s := box(bg, 16)
+	s.border_width_top = 1
+	s.border_color = bg.lightened(0.25)
+	s.content_margin_top = 12
+	s.content_margin_bottom = 12
+	return s
+
+
 static func button_colors(b: Button, bg: Color, dark: Color) -> Button:
 	for st in ["normal", "hover"]:
-		b.add_theme_stylebox_override(st, box(bg, 22, 6, dark))
-	b.add_theme_stylebox_override("pressed", box(dark, 22, 2, dark, 4))
+		b.add_theme_stylebox_override(st, btn_box(bg))
+	b.add_theme_stylebox_override("pressed", btn_box(dark))
+	if bg.get_luminance() > 0.55:                  # botón claro (dorado): texto oscuro
+		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+			b.add_theme_color_override(k, DARK)
 	return b
 
 
@@ -127,9 +144,9 @@ static func price_button(amount: int, cur: String, prefix := "") -> Button:
 	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	h.offset_bottom = -4
 	if prefix != "":
-		h.add_child(label(prefix, 24, Color.WHITE, bold))
+		h.add_child(label(prefix, 24, DARK if cur == "coins" else Color.WHITE, bold))
 	h.add_child(VIcon.make("coin" if cur == "coins" else "pearl", 30))
-	h.add_child(label(_num(amount), 26, Color.WHITE, bold))
+	h.add_child(label(_num(amount), 26, DARK if cur == "coins" else Color.WHITE, bold))
 	b.add_child(h)
 	return b
 
@@ -141,15 +158,17 @@ static func click() -> void:
 		s.play("click", 40, -8.0)
 
 
-static func card(bg := Color.WHITE, radius := 24) -> PanelContainer:
+static func card(bg := CARD, radius := 18) -> PanelContainer:
 	var p := PanelContainer.new()
 	var s := box(bg, radius)
 	s.content_margin_left = 16
 	s.content_margin_right = 16
 	s.content_margin_top = 14
 	s.content_margin_bottom = 14
-	s.shadow_color = Color(0.11, 0.2, 0.34, 0.1)
-	s.shadow_size = 6
+	s.set_border_width_all(1)
+	s.border_color = LINE
+	s.shadow_color = Color(0, 0, 0, 0.25)
+	s.shadow_size = 8
 	s.shadow_offset = Vector2(0, 3)
 	p.add_theme_stylebox_override("panel", s)
 	return p
@@ -174,7 +193,7 @@ static func bar(value: float, color: Color, h := 12.0) -> ProgressBar:
 	b.show_percentage = false
 	b.custom_minimum_size = Vector2(60, h)
 	b.add_theme_stylebox_override("fill", box(color, 8))
-	b.add_theme_stylebox_override("background", box(Color("e3eaf0"), 8))
+	b.add_theme_stylebox_override("background", box(Color(1, 1, 1, 0.08), 8))
 	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return b
 

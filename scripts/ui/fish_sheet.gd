@@ -50,8 +50,8 @@ func _fish_row(f: Dictionary, on_tap: Callable) -> Button:
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size.y = 128
 	for st in ["normal", "hover"]:
-		b.add_theme_stylebox_override(st, UI.box(Color.WHITE, 24, 5, Color("eadfce")))
-	b.add_theme_stylebox_override("pressed", UI.box(Color("f4fbfb"), 24, 2, Color("eadfce"), 3))
+		b.add_theme_stylebox_override(st, UI.btn_box(UI.CARD))
+	b.add_theme_stylebox_override("pressed", UI.box(Color("1a3550"), 24, 2, UI.LINE, 3))
 	b.pressed.connect(on_tap)
 	var h := UI.hbox(14)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -63,7 +63,7 @@ func _fish_row(f: Dictionary, on_tap: Callable) -> Button:
 	var pv := Previews.fish(f.genes, 100)
 	pv.custom_minimum_size.x = 170
 	var bg := PanelContainer.new()
-	bg.add_theme_stylebox_override("panel", UI.box(Color("dff3f5"), 18))
+	bg.add_theme_stylebox_override("panel", UI.box(Color("12324a"), 18))
 	bg.add_child(pv)
 	h.add_child(bg)
 	var v := UI.vbox(4)
@@ -95,7 +95,7 @@ func _show_detail(id: int) -> void:
 	tank.overlay.selected_id = id
 	clear_body()
 	title_label.text = f.name
-	var back := UI.button("‹ Mis peces", UI.SAND, Color("e2d3bd"))
+	var back := UI.button("‹ Mis peces", UI.SAND, UI.SAND_D)
 	back.add_theme_color_override("font_color", UI.NAVY)
 	back.add_theme_color_override("font_hover_color", UI.NAVY)
 	back.pressed.connect(_show_list)
@@ -111,7 +111,7 @@ func _show_detail(id: int) -> void:
 	var st := UI.box(Color("0f5a73"), 26)
 	st.bg_color = Color("12627c")
 	aq.add_theme_stylebox_override("panel", st)
-	aq.add_child(Previews.fish(f.genes, 230, 480))
+	aq.add_child(Previews.fish(f.genes, 230, 480, true))
 	v.add_child(aq)
 
 	var g: Dictionary = f.genes
@@ -210,7 +210,7 @@ func _show_partners(id: int) -> void:
 	var f := Game.get_fish(id)
 	clear_body()
 	title_label.text = "Elige pareja"
-	var back := UI.button("‹ %s" % f.name, UI.SAND, Color("e2d3bd"))
+	var back := UI.button("‹ %s" % f.name, UI.SAND, UI.SAND_D)
 	back.add_theme_color_override("font_color", UI.NAVY)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	back.pressed.connect(_show_detail.bind(id))
@@ -273,7 +273,7 @@ func _rename(id: int) -> void:
 	line.add_theme_font_size_override("font_size", 32)
 	line.add_theme_color_override("font_color", UI.NAVY)
 	for st in ["normal", "focus"]:
-		line.add_theme_stylebox_override(st, UI.box(Color.WHITE, 18, 3, UI.TEAL))
+		line.add_theme_stylebox_override(st, UI.box(UI.SAND_D, 14, 2, UI.TEAL))
 	m.centered(line)
 	var ok := UI.button("Guardar", UI.CORAL, UI.CORAL_D)
 	var save := func(_t := ""):

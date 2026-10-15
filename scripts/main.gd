@@ -17,6 +17,7 @@ var tank_rect := Rect2()
 
 var _room: ColorRect
 var _furniture: Node2D
+var _stand: Node2D                   ## mueble con veta de madera (wood.gdshader)
 var _frame: Node2D
 var _bowl_mask: Node2D               ## pinta la pared encima de lo que asoma fuera de la pecera redonda
 var _props: Node2D
@@ -48,6 +49,12 @@ func _ready() -> void:
 	_room.material = ShaderMaterial.new()
 	_room.material.shader = ROOM
 	add_child(_room)
+	_stand = Node2D.new()
+	_stand.draw.connect(_draw_stand)
+	_stand.material = ShaderMaterial.new()
+	_stand.material.shader = preload("res://shaders/wood.gdshader")
+	_stand.material.set_shader_parameter("noise", TankView.NOISE)
+	add_child(_stand)
 	_furniture = Node2D.new()
 	_furniture.draw.connect(_draw_furniture)
 	add_child(_furniture)
@@ -269,6 +276,7 @@ func _layout() -> void:
 	else:
 		tank.rebuild()
 	_furniture.queue_redraw()
+	_stand.queue_redraw()
 	_frame.queue_redraw()
 	_bowl_mask.queue_redraw()
 	_props.queue_redraw()
@@ -330,6 +338,8 @@ func _set_zoom(z: float, center: Vector2) -> void:
 	var half := vp * 0.5 / z
 	cam.zoom = Vector2(z, z)
 	cam.position = Vector2(clampf(center.x, half.x, vp.x - half.x), clampf(center.y, half.y, vp.y - half.y))
+	if tank:
+		tank.set_render_zoom(z)
 	# El resplandor de la pared sigue a la pecera en pantalla.
 	var tl := (tank_rect.position - cam.position) * z + vp * 0.5
 	_room.material.set_shader_parameter("tank", Vector4(tl.x, tl.y, tank_rect.size.x * z, tank_rect.size.y * z))
@@ -531,7 +541,6 @@ func _draw_furniture() -> void:
 	var top_y := r.end.y + stand_gap()
 	var x0 := 16.0 if Game.tank_tier < 4 else 0.0
 	var x1 := vp.x - x0
-	RoomArt.stand(ci, x0, x1, top_y, vp.y, Game.style.stand)
 	if Game.style.ambience == "navidad":
 		RoomArt.snow(ci, x0 - 10, x1 + 10, top_y)
 	ci.draw_colored_polygon(DecorArt.ell(Vector2(r.get_center().x, top_y + 2), r.size.x * 0.55, 8), Color(0, 0, 0, 0.18))
@@ -539,6 +548,12 @@ func _draw_furniture() -> void:
 	var side := r.position.x - x0
 	if side > 70.0:
 		RoomArt.side_props(ci, Game.style.ambience, x0 + side * 0.45, x1 - side * 0.45, top_y)
+
+
+func _draw_stand() -> void:
+	var vp := get_viewport_rect().size
+	var x0 := 16.0 if Game.tank_tier < 4 else 0.0
+	RoomArt.stand(_stand, x0, vp.x - x0, tank_rect.end.y + stand_gap(), vp.y, Game.style.stand)
 
 
 ## Pared: guirnalda del ambiente y cuadro, solo si queda sitio sobre la pecera.
@@ -623,7 +638,7 @@ func _draw_props() -> void:
 				var n := 0
 				for id in Catalog.PRODUCT_ORDER:
 					n += int(Game.products.get(id, 0))
-				ci.draw_circle(base + Vector2(20, -56), 12, UI.NAVY if n > 0 else UI.BAD)
+				ci.draw_circle(base + Vector2(20, -56), 12, UI.DARK if n > 0 else UI.BAD)
 				ci.draw_string(font, base + Vector2(8, -51), str(n), HORIZONTAL_ALIGNMENT_CENTER, 24, 14, Color.WHITE)
 				r = Rect2(base + Vector2(-26, -86), Vector2(52, 86))
 			"siphon":
