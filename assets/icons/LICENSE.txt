@@ -1,0 +1,4 @@
+Iconos de game-icons.net (https://game-icons.net), licencia Creative Commons BY 3.0
+(https://creativecommons.org/licenses/by/3.0/). Autores: badges, delapouite, lorc, sbed, skoll.
+Se han recoloreado en el juego (fondo eliminado, tinte por color).
+Correspondencia: check=delapouite/check-mark, clock=lorc/stopwatch, close=lorc/cross-mark, coin=delapouite/two-coins, dna=lorc/dna1, egg=delapouite/fish-eggs, fish=delapouite/tropical-fish, food=delapouite/canned-fish, gear=lorc/cog, happy=badges/happy, health=sbed/health-normal, heart=skoll/hearts, lock=lorc/padlock, missions=delapouite/checklist, o2=lorc/bubbles, pearl=delapouite/oyster-pearl, ph=sbed/water-drop, plant=lorc/sprout, shop=delapouite/shop, sparkle=delapouite/sparkles, sponge=lorc/spray, star=delapouite/round-star, tank=delapouite/aquarium, thermo=delapouite/thermometer-hot

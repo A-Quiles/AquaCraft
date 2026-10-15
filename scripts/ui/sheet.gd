@@ -22,17 +22,11 @@ func _init(title_text: String, height_frac := 0.8) -> void:
 			close())
 	add_child(_dim)
 	panel = PanelContainer.new()
-	var st := UI.box(UI.CREAM, 36)
-	st.corner_radius_bottom_left = 0
-	st.corner_radius_bottom_right = 0
+	var st: StyleBoxTexture = Glass.panel().duplicate()
 	st.content_margin_left = 26
 	st.content_margin_right = 26
 	st.content_margin_top = 16
 	st.content_margin_bottom = 20 + Hud.safe_margins().y
-	st.shadow_color = Color(0, 0, 0, 0.45)
-	st.shadow_size = 22
-	st.border_width_top = 1
-	st.border_color = Color(1, 1, 1, 0.12)
 	panel.add_theme_stylebox_override("panel", st)
 	panel.anchor_left = 0.0
 	panel.anchor_right = 1.0
@@ -55,7 +49,7 @@ func _init(title_text: String, height_frac := 0.8) -> void:
 	x.custom_minimum_size = Vector2(64, 64)
 	x.focus_mode = Control.FOCUS_NONE
 	for k in ["normal", "hover", "pressed"]:
-		x.add_theme_stylebox_override(k, UI.box(UI.SAND, 32))
+		x.add_theme_stylebox_override(k, Glass.button(UI.SAND))
 	var xi := VIcon.make("close", 26)
 	xi.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	x.add_child(xi)
@@ -120,7 +114,7 @@ func tabs(names: Array, current: int, on_pick: Callable) -> Array:
 		b.custom_minimum_size.y = 58
 		if i != current:
 			for k in ["normal", "hover"]:
-				b.add_theme_stylebox_override(k, UI.box(UI.SAND, 22, 6, UI.SAND_D))
+				b.add_theme_stylebox_override(k, Glass.button(UI.SAND))
 			b.add_theme_color_override("font_color", UI.MUTED)
 			b.add_theme_color_override("font_hover_color", UI.MUTED)
 		b.pressed.connect(on_pick.bind(i))

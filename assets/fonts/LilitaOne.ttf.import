@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://bhjvye14nycaw"
-path="res://.godot/imported/Fredoka.ttf-38db4f924b441151c6642ef65fe93e1f.fontdata"
+uid="uid://cr7kv27gof6nv"
+path="res://.godot/imported/LilitaOne.ttf-a433422ca76ebca38f6a25296c412c94.fontdata"
 
 [deps]
 
-source_file="res://assets/fonts/Fredoka.ttf"
-dest_files=["res://.godot/imported/Fredoka.ttf-38db4f924b441151c6642ef65fe93e1f.fontdata"]
+source_file="res://assets/fonts/LilitaOne.ttf"
+dest_files=["res://.godot/imported/LilitaOne.ttf-a433422ca76ebca38f6a25296c412c94.fontdata"]
 
 [params]
 

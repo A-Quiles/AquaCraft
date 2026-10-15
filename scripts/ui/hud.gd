@@ -56,15 +56,13 @@ func _ready() -> void:
 		Game.ask_notifications.call_deferred()
 
 
-func _glass(radius := 26) -> StyleBoxFlat:
-	var s := UI.box(Color(0.055, 0.1, 0.17, 0.72), mini(radius, 20))
-	s.set_border_width_all(1)
-	s.border_color = UI.LINE
-	s.content_margin_top = 6
-	s.content_margin_bottom = 6
-	s.content_margin_left = 12
-	s.content_margin_right = 16
-	return s
+func _glass(_radius := 26) -> StyleBox:
+	var sb: StyleBoxTexture = Glass.card(Color("0b2236"), 0.8).duplicate()
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	sb.content_margin_left = 12
+	sb.content_margin_right = 16
+	return sb
 
 
 func _build_top() -> void:
@@ -289,20 +287,17 @@ func _build_bottom() -> void:
 func _style_names() -> void:
 	var on := Game.show_names
 	for st in ["normal", "hover", "pressed"]:
-		_names_btn.add_theme_stylebox_override(st, UI.box(UI.TEAL, 26, 4, UI.TEAL_D) if on else _glass(26))
+		_names_btn.add_theme_stylebox_override(st, Glass.button(UI.TEAL) if on else _glass(26))
 	for k in ["font_color", "font_hover_color", "font_pressed_color"]:
 		_names_btn.add_theme_color_override(k, Color.WHITE)
 	_names_btn.text = "Nombres: sí" if on else "Nombres: no"
 
 
 func _style_bar(b: Button, active: bool) -> void:
-	var bg := Color(UI.TEAL, 0.9) if active else Color(0.055, 0.1, 0.17, 0.78)
+	var bg := UI.TEAL if active else Color("12324a")
 	for st in ["normal", "hover"]:
-		var sb := UI.box(bg, 22)
-		sb.set_border_width_all(1)
-		sb.border_color = UI.TEAL if active else UI.LINE
-		b.add_theme_stylebox_override(st, sb)
-	b.add_theme_stylebox_override("pressed", UI.box(bg.darkened(0.25), 22))
+		b.add_theme_stylebox_override(st, Glass.button(bg))
+	b.add_theme_stylebox_override("pressed", Glass.button(bg, true))
 	(b.get_meta("label") as Label).add_theme_color_override("font_color", Color.WHITE if active else UI.NAVY)
 
 
@@ -425,14 +420,8 @@ func show_toast(text: String, icon := "star") -> void:
 		Sfx.vibrate(20)
 	if _toasts.get_child_count() >= 3:
 		_toasts.get_child(0).queue_free()
-	var p := UI.card(Color(0.07, 0.13, 0.21, 0.97), 18)
-	var st: StyleBoxFlat = p.get_theme_stylebox("panel").duplicate()
-	st.border_color = UI.TEAL if icon != "health" else UI.BAD
-	st.set_border_width_all(0)
-	st.border_width_left = 4
-	st.shadow_color = Color(0, 0, 0, 0.35)
-	st.shadow_size = 14
-	p.add_theme_stylebox_override("panel", st)
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", Glass.button(Color("123a52") if icon != "health" else Color("5a1f2a")))
 	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	p.custom_minimum_size.x = 0
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -961,7 +950,7 @@ func open_settings() -> void:
 		m.close()
 		Game.reset_game()
 		get_tree().reload_current_scene()))
-	m.box.add_child(_center_label("AquaCraft %s · sin anuncios ni compras" % ProjectSettings.get_setting("application/config/version"), 19))
+	m.box.add_child(_center_label("AquaCraft %s · sin anuncios ni compras\nIconos: game-icons.net (Lorc, Delapouite, sbed, Skoll), CC BY 3.0" % ProjectSettings.get_setting("application/config/version"), 19))
 	_show_modal(m)
 
 

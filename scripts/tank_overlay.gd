@@ -53,8 +53,6 @@ func _draw() -> void:
 	for a in tank.actors.values():
 		var f: Dictionary = a.data
 		var top: Vector2 = a.position + Vector2(0, -a.size_px().y * 0.75 - 14)
-		if f.id == selected_id:
-			draw_arc(a.position, a.size_px().x * 0.62, 0, TAU, 40, Color(1, 1, 1, 0.55 + 0.25 * sin(t * 4.0)), 2.5, true)
 		if a.heart > 0.0:
 			_heart(top + Vector2(0, -6 * (1.6 - a.heart)), 7.0, Color(1.0, 0.4, 0.55, minf(1.0, a.heart)))
 		elif f.hunger > 60.0:

@@ -33,25 +33,28 @@ static func setup() -> Theme:
 	if theme:
 		return theme
 	var ts := TextServerManager.get_primary_interface()
-	var manrope: FontFile = load("res://assets/fonts/Manrope.ttf")
-	body = _font(manrope, {ts.name_to_tag("wght"): 560})
-	bold = _font(manrope, {ts.name_to_tag("wght"): 720})
-	heading = _font(manrope, {ts.name_to_tag("wght"): 800})
+	var nunito: FontFile = load("res://assets/fonts/Nunito.ttf")
+	var lilita: FontFile = load("res://assets/fonts/LilitaOne.ttf")
+	body = _font(nunito, {ts.name_to_tag("wght"): 650})
+	bold = _font(nunito, {ts.name_to_tag("wght"): 850})
+	heading = FontVariation.new()                 # rótulos, botones y cifras: redonda y gruesa, con carácter
+	heading.base_font = lilita
+	heading.spacing_glyph = 1
 	var t := Theme.new()
 	t.default_font = body
 	t.default_font_size = 26
 	t.set_color("font_color", "Label", NAVY)
 	for st in ["normal", "hover", "focus"]:
-		t.set_stylebox(st, "Button", btn_box(TEAL))
-	t.set_stylebox("pressed", "Button", btn_box(TEAL_D))
-	t.set_stylebox("disabled", "Button", btn_box(SAND_D))
+		t.set_stylebox(st, "Button", Glass.button(TEAL))
+	t.set_stylebox("pressed", "Button", Glass.button(TEAL, true))
+	t.set_stylebox("disabled", "Button", Glass.button(Color(SAND_D, 0.8)))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
-	t.set_font("font", "Button", bold)
+	t.set_font("font", "Button", heading)
 	t.set_font_size("font_size", "Button", 25)
 	for k in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		t.set_color(k, "Button", Color.WHITE)
 	t.set_color("font_disabled_color", "Button", MUTED)
-	t.set_stylebox("panel", "PanelContainer", box(CARD, 18))
+	t.set_stylebox("panel", "PanelContainer", Glass.card())
 	t.set_stylebox("background", "ProgressBar", box(Color(1, 1, 1, 0.08), 10))
 	t.set_stylebox("fill", "ProgressBar", box(TEAL, 10))
 	t.set_stylebox("scroll", "VScrollBar", StyleBoxEmpty.new())
@@ -84,20 +87,15 @@ static func box(bg: Color, radius := 20, bottom := 0, border := Color.TRANSPAREN
 	return s
 
 
-## Botón plano con un brillo fino arriba (sin borde grueso de "juguete").
-static func btn_box(bg: Color) -> StyleBoxFlat:
-	var s := box(bg, 16)
-	s.border_width_top = 1
-	s.border_color = bg.lightened(0.25)
-	s.content_margin_top = 12
-	s.content_margin_bottom = 12
-	return s
+## Botón de cristal con relieve (ver Glass).
+static func btn_box(bg: Color) -> StyleBox:
+	return Glass.button(bg)
 
 
 static func button_colors(b: Button, bg: Color, dark: Color) -> Button:
 	for st in ["normal", "hover"]:
-		b.add_theme_stylebox_override(st, btn_box(bg))
-	b.add_theme_stylebox_override("pressed", btn_box(dark))
+		b.add_theme_stylebox_override(st, Glass.button(bg))
+	b.add_theme_stylebox_override("pressed", Glass.button(bg, true))
 	if bg.get_luminance() > 0.55:                  # botón claro (dorado): texto oscuro
 		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
 			b.add_theme_color_override(k, DARK)
@@ -145,7 +143,7 @@ static func price_button(amount: int, cur: String, prefix := "") -> Button:
 	h.offset_bottom = -4
 	if prefix != "":
 		h.add_child(label(prefix, 24, DARK if cur == "coins" else Color.WHITE, bold))
-	h.add_child(VIcon.make("coin" if cur == "coins" else "pearl", 30))
+	h.add_child(VIcon.make("coin" if cur == "coins" else "pearl", 30, Color("8a5200") if cur == "coins" else Color(0, 0, 0, 0)))
 	h.add_child(label(_num(amount), 26, DARK if cur == "coins" else Color.WHITE, bold))
 	b.add_child(h)
 	return b
@@ -158,19 +156,11 @@ static func click() -> void:
 		s.play("click", 40, -8.0)
 
 
-static func card(bg := CARD, radius := 18) -> PanelContainer:
+## Tarjeta de cristal; con CREAM, panel grande con la superficie del agua ondulada (ventanas, avisos).
+static func card(bg := CARD, _radius := 18) -> PanelContainer:
 	var p := PanelContainer.new()
-	var s := box(bg, radius)
-	s.content_margin_left = 16
-	s.content_margin_right = 16
-	s.content_margin_top = 14
-	s.content_margin_bottom = 14
-	s.set_border_width_all(1)
-	s.border_color = LINE
-	s.shadow_color = Color(0, 0, 0, 0.25)
-	s.shadow_size = 8
-	s.shadow_offset = Vector2(0, 3)
-	p.add_theme_stylebox_override("panel", s)
+	var sb: StyleBox = Glass.panel() if bg == CREAM else Glass.card(Color(bg.r, bg.g, bg.b), bg.a)
+	p.add_theme_stylebox_override("panel", sb)
 	return p
 
 
